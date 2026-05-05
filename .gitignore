@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenv
+venv/
+.venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Datasets (pull via script, do not commit)
+data/
+datasets/
+mvtec_anomaly_detection/
+*.tar
+*.tar.xz
+*.zip
+
+# Model weights & engines (large binaries)
+*.pt
+*.pth
+*.onnx
+*.engine
+*.plan
+*.trt
+*.cache
+models/
+checkpoints/
+
+# Build / TensorRT artifacts
+build/
+dist/
+trt_logs/
+calibration_cache/
+
+# Logs & outputs
+logs/
+runs/
+wandb/
+mlruns/
+outputs/
+*.log
+
+# DeepStream temp files
+*.mp4.tmp
+gst-reaper-*
+
+# Media output (commit final demo only, in docs/)
+*.mp4
+*.mov
+*.avi
+!docs/demo*.mp4
+
+# Secrets
+*.pem
+*.key
+.env.local
