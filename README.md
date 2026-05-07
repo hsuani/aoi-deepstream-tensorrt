@@ -45,15 +45,23 @@ This repo benchmarks an AOI pipeline twice: once on the canonical MVTec AD test 
 | Dataset | MVTec AD (transistor, cable, metal_nut) |
 | Hardware | NVIDIA A10 / L40S (cloud) · CUDA 12.x |
 
-## Results (updated as the sprint progresses)
+## Results
 
-### Latency / Throughput — TensorRT (single A10, batch=1, 640×640)
+### Latency / Throughput — TensorRT (NVIDIA Tesla T4, batch=1, imgsz=640)
 
-| Precision | Latency (ms) | Throughput (FPS) | Image AUC | Pixel mAP |
-|-----------|--------------|------------------|-----------|-----------|
-| FP32      | _pending_    | _pending_        | _pending_ | _pending_ |
-| FP16      | _pending_    | _pending_        | _pending_ | _pending_ |
-| INT8      | _pending_    | _pending_        | _pending_ | _pending_ |
+| Precision | Engine size | Build time | Latency mean | Throughput | Speedup |
+|-----------|-------------|------------|--------------|------------|---------|
+| FP32      | 58.0 MB     | 57 s       | 10.91 ms     | 91.6 qps   | 1.00×   |
+| FP16      | 25.3 MB     | 319 s      | 3.49 ms      | 286.5 qps  | **3.13×** |
+| INT8      | 15.7 MB     | 480 s      | **2.09 ms**  | **478.1 qps** | **5.22×** |
+
+![Benchmark](docs/trt_benchmark_t4.png)
+
+INT8 calibration with `IInt8EntropyCalibrator2` over 335 MVTec metal_nut images.
+Functional output drift: FP16 < 0.001% vs FP32, INT8 8.6%. Per-precision mAP
+on val set deferred to production hardware verification.
+
+Full benchmark methodology + reproducibility: [`benchmarks/trt-t4.md`](benchmarks/trt-t4.md).
 
 ### ISP-aware Robustness Study _(planned, week 2)_
 
