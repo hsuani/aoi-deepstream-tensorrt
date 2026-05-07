@@ -10,6 +10,39 @@ import os
 from pathlib import Path
 import yaml
 
+RECIPES = {
+    'v1': {
+        'weights': 'yolov8s-seg.pt',
+        'imgsz': 640,
+        'lr0': 0.01,
+        'batch': 8,
+        'mixup': 0.1,
+        'copy_paste': 0.3,
+        'close_mosaic': 10,
+        'patience': 25,
+    },
+    'v2': {
+        'weights': 'yolov8n-seg.pt',
+        'imgsz': 1024,
+        'lr0': 0.001,
+        'batch': 4,
+        'mixup': 0.0,
+        'copy_paste': 0.0,
+        'close_mosaic': 20,
+        'patience': 15,
+    },
+    'v3': {
+        'weights': 'yolov8s-seg.pt',     # 回 v1 (s 不是 n)
+        'imgsz': 640,                    # 回 v1
+        'lr0': 0.001,                    # 唯一改動
+        'batch': 8,                      # 回 v1
+        'mixup': 0.1,                    # 回 v1
+        'copy_paste': 0.3,               # 回 v1 ⭐
+        'close_mosaic': 20,              # 留 (從 10 → 20，給 model 更多 clean 收尾)
+        'patience': 20,
+    }
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -18,6 +51,7 @@ def parse_args():
     parser.add_argument("--class", dest='class_name', type=str, required=True,
                         choices=['transistor', 'cable', 'metal_nut'],
                         help="MVTec class to train on")
+    parser.add_argument('--recipe', choices=list(RECIPES.keys()), default='v1')
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=8)
@@ -39,42 +73,39 @@ def parse_args():
 
 
 def build_train_kwargs(args) -> dict:
-    """Compose kwargs dict for YOLO.train(). Apply AOI-tuned augmentation."""
-    return {
-        "epochs": args.epochs,
-        "batch": args.batch,
-        "imgsz": args.imgsz,
-        "device": args.device,
-        "workers": args.workers,
-        "name": args.name,
-        "seed": args.seed,
-        "patience": args.patience,
+    recipe = RECIPES[args.recipe]
 
-        "single_cls": True,
-        "amp": False,
-        "cache": False,
-
-        "plots": True,
-        "verbose": True,
-        "exist_ok": True,
-
-        "hsv_h": 0.015,
-        "hsv_s": 0.5,
-        "hsv_v": 0.4,
-        "degrees": 10,
-        "translate": 0.1,
-        "scale": 0.3,
-        "shear": 0,
-        "perspective": 0,
-        "flipud": 0,
-        "fliplr": 0.5,
-        "mosaic": 1.0,
-        "mixup": 0.1,
-        "copy_paste": 0.3,
-        "close_mosaic": 10,
-        "erasing": 0.4,
+    # base augmentation (recipe-independent)
+    base = {
+        'data': None,
+        'epochs': args.epochs,
+        'imgsz': recipe['imgsz'],
+        'batch': recipe['batch'],
+        'device': args.device,
+        'workers': args.workers,
+        'name': args.name or f'{args.class_name}_{args.recipe}',
+        'seed': args.seed,
+        'patience': recipe['patience'],
+        'lr0': recipe['lr0'],
+        'single_cls': True,
+        'amp': False,
+        'cache': False,
+        'plots': True,
+        'verbose': True,
+        'exist_ok': True,
+        # base augmentation
+        'hsv_h': 0.015, 'hsv_s': 0.5, 'hsv_v': 0.4,
+        'degrees': 10, 'translate': 0.1, 'scale': 0.3,
+        'shear': 0, 'perspective': 0,
+        'flipud': 0, 'fliplr': 0.5,
+        'erasing': 0.4,
+        # recipe-driven augmentation
+        'mosaic': 1.0,
+        'mixup': recipe['mixup'],
+        'copy_paste': recipe['copy_paste'],
+        'close_mosaic': recipe['close_mosaic'],
     }
-
+    return base
 
 def verify_data_yaml(args) -> Path:
     """Check data.yaml exists and content sane. Raise FileNotFoundError / ValueError if not."""
@@ -102,40 +133,18 @@ def main():
 
     from ultralytics import YOLO
 
-    weights_path = Path('models/yolov8s-seg.pt')
-    weights = weights_path if weights_path.exists() else 'yolov8s-seg.pt'
-    model = YOLO(weights)
+    weights_name = RECIPES[args.recipe]['weights']
+    weights_path = Path('models') / weights_name
+    weights = str(weights_path) if weights_path.exists() else weights_name
 
+    model = YOLO(weights)
     train_kwargs = build_train_kwargs(args)
     train_kwargs['data'] = str(data_yaml)
 
-    if args.resume:
-        results = model.train(resume=True)
-    else:
-        results = model.train(**train_kwargs)
+    results = model.train(resume=True) if args.resume else model.train(**train_kwargs)
 
     save_dir = Path(results.save_dir) if hasattr(results, 'save_dir') else None
-
-    if save_dir and not args.resume:
-        (save_dir / 'aoi_train_kwargs.json').write_text(
-            json.dumps(train_kwargs, default=str, indent=2)
-        )
-
-    if save_dir:
-        print(f'\n[done] best weights: {save_dir / "weights" / "best.pt"}')
-    else:
-        print('\n[done] (see runs/segment/...)')
-
-    if hasattr(results, 'results_dict'):
-        rd = results.results_dict
-        for key in (
-            'metrics/precision(M)', 'metrics/recall(M)',
-            'metrics/mAP50(M)', 'metrics/mAP50-95(M)',
-            'metrics/mAP50(B)', 'metrics/mAP50-95(B)',
-        ):
-            if key in rd:
-                print(f'  {key}: {rd[key]:.4f}')
-
+    print(f'\n[done] best weights: {save_dir / "weights" / "best.pt" if save_dir else "(see runs/segment/...)"}')
 
 if __name__ == '__main__':
     main()

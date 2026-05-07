@@ -26,24 +26,30 @@ env/
 *.swo
 .DS_Store
 
-# Datasets (pull via script, do not commit)
-data/
+# Datasets (pull via script, do not commit) — anchored to repo root
+/data/
 datasets/
 mvtec_anomaly_detection/
 *.tar
 *.tar.xz
 *.zip
 
-# Model weights & engines (large binaries)
+# Model weights & engines (large binaries, not portable)
 *.pt
 *.pth
 *.onnx
 *.engine
 *.plan
 *.trt
-*.cache
-models/
-checkpoints/
+/models/
+/checkpoints/
+
+# TRT engine output dir (large)
+/engines/*.engine
+/engines/*.plan
+
+# but DO commit calibration cache (small, reproducibility)
+!/engines/*.cache
 
 # Build / TensorRT artifacts
 build/
