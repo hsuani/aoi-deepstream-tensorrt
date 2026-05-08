@@ -161,7 +161,7 @@ Pending NVIDIA LaunchPad lab approval; instructions land when the pipeline is co
 
 ## Author
 
-Hsuani — ex-Qualcomm ISP/Camera, building toward NVIDIA Metropolis (Manufacturing). Prior experience: smartphone ISP tuning, MediaPipe geometric analysis, serverless ML deployment.
+Yu-Hsuan (Shane) Tseng — ex-Qualcomm ISP/Camera, building toward NVIDIA Metropolis (Manufacturing). Prior experience: smartphone ISP tuning, MediaPipe geometric analysis, serverless ML deployment.
 
 ## License
 
