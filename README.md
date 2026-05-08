@@ -51,7 +51,7 @@ This repo benchmarks an AOI pipeline twice: once on the canonical MVTec AD test 
 | Optimization | TensorRT 10.x · `trtexec` · entropy calibration |
 | Streaming | DeepStream 7.x · GStreamer · `nvinfer` · `nvdsosd` |
 | Dataset | MVTec AD (transistor, cable, metal_nut) |
-| Hardware | NVIDIA A10 / L40S (cloud) · CUDA 12.x |
+| Hardware | Mac M5 (MPS) for training · NVIDIA Tesla T4 (Kaggle) for TRT benchmark · A10 / L40S targets for production · CUDA 12.x |
 
 ## Results
 
@@ -85,51 +85,73 @@ Hypothesis: INT8 quantization amplifies sensitivity to low-SNR inputs. To be mea
 ```
 .
 ├── src/
-│   ├── train.py            # PyTorch training entry
-│   ├── export_onnx.py      # ONNX export
-│   ├── build_engine.py     # trtexec wrapper, calibration
-│   ├── deepstream/         # gst pipeline + config
-│   └── isp_aug/            # ISP-aware augmentation module
-├── benchmarks/             # results, plots
-├── configs/                # nvinfer + DeepStream configs
-├── notebooks/              # exploration
-└── docs/                   # architecture diagrams, design notes
+│   ├── data/
+│   │   ├── mvtec_to_yolo.py          # MVTec → YOLOv8-seg format converter
+│   │   └── visualize_yolo_label.py   # polygon overlay sanity check
+│   ├── train.py                      # YOLOv8s-seg fine-tune entry (recipe v1/v2/v3)
+│   ├── export_onnx.py                # ONNX export with onnxruntime verification
+│   ├── deepstream/                   # gst pipeline + config (D5-D7, in progress)
+│   └── isp_aug/                      # ISP-aware augmentation (D8-D9, planned)
+├── notebooks/
+│   └── aoi-tensorrt-benchmark.ipynb  # Kaggle T4 FP32/FP16/INT8 build + benchmark
+├── benchmarks/
+│   └── trt-t4.md                     # Tesla T4 benchmark methodology + results
+├── engines/
+│   └── metal_nut_int8.cache          # entropy calibration cache (reproducible re-build)
+├── notes/                            # day-by-day logs, retros, hyperparameter ablation
+└── docs/
+    ├── adr/                          # 5 architecture decision records
+    ├── project-charter.md
+    ├── risk-register.md
+    └── trt_benchmark_t4.png          # latency / throughput / size bar plot
 ```
 
 ## Running
 
-```bash
-# Pull NGC DeepStream container
-docker pull nvcr.io/nvidia/deepstream:7.0-gc-triton-devel
+### 1. Train baseline (Mac MPS or NVIDIA GPU)
 
-# Inside container
-git clone <this-repo>
+```bash
+git clone git@github.com:hsuani/aoi-deepstream-tensorrt.git
 cd aoi-deepstream-tensorrt
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 1. Train baseline
-python src/train.py --class transistor --epochs 50
+# Convert MVTec → YOLO format (download MVTec AD first; see notes/day-02-training_summary.md)
+python src/data/mvtec_to_yolo.py --src data/mvtec --dst data/yolo
 
-# 2. Export + build engine
-python src/export_onnx.py --ckpt models/yolov8s_transistor.pt
-trtexec --onnx=model.onnx --saveEngine=model_fp16.engine --fp16
-
-# 3. Run DeepStream pipeline
-python src/deepstream/run.py --config configs/aoi_pipeline.txt
+# Train metal_nut (recipe v1: lr=auto, full augmentation, ~30 min on M5 / T4)
+python src/train.py --class metal_nut --epochs 50 --recipe v1
 ```
 
-Full setup notes in [`docs/setup.md`](docs/setup.md).
+### 2. Export ONNX
+
+```bash
+python src/export_onnx.py \
+  --weights runs/segment/metal_nut_v1/weights/best.pt \
+  --imgsz 640 --dynamic --simplify
+```
+
+### 3. Build TRT engines + benchmark (Kaggle T4)
+
+Open [`notebooks/aoi-tensorrt-benchmark.ipynb`](notebooks/aoi-tensorrt-benchmark.ipynb)
+on a Kaggle notebook with T4 GPU + Internet enabled. Upload the ONNX as a Kaggle
+Dataset and the calibration data (MVTec metal_nut subset). Run cells top-to-bottom
+(~30 min total: FP32 1m + FP16 5m + INT8 8m + benchmarks).
+
+### 4. DeepStream pipeline _(D5-D7, in progress)_
+
+Pending NVIDIA LaunchPad lab approval; instructions land when the pipeline is committed.
 
 ## Roadmap
 
-- [x] Repo skeleton, NGC container verified
-- [ ] MVTec AD baseline (3 classes)
-- [ ] ONNX export + FP32/FP16 engines
-- [ ] INT8 calibration + 3-precision benchmark
-- [ ] DeepStream pipeline + 30-sec demo video
-- [ ] ISP-aware augmentation + robustness re-benchmark
-- [ ] EfficientAD secondary baseline
-- [ ] Jetson Orin Nano deployment (stretch)
+- [x] **D1** — Repo skeleton, MVTec → YOLO converter, dev environment
+- [x] **D2** — MVTec AD baseline (3 classes; metal_nut mAP@50 0.75; transistor / cable cross-class study)
+- [x] **D3** — ONNX export with dynamic batch + onnxruntime verification
+- [x] **D4** — TensorRT FP32 / FP16 / INT8 build + benchmark on Tesla T4 (5.22× INT8 speedup)
+- [ ] **D5-D7** — DeepStream multi-stream pipeline + 30-sec demo video
+- [ ] **D8-D9** — ISP-aware augmentation robustness study per precision
+- [ ] **D10-D14** — Documentation polish, blog post, NVIDIA Inception application
+- [ ] _Stretch_ — EfficientAD secondary baseline; Jetson Orin Nano deployment
 
 ## Limitations & honest caveats
 
