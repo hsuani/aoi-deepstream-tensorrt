@@ -4,6 +4,14 @@
 
 End-to-end Automated Optical Inspection (AOI) defect detection MVP on the NVIDIA inference stack: **PyTorch → ONNX → TensorRT → DeepStream**. Built to validate latency, throughput, and image-quality robustness for industrial inspection workloads.
 
+## Project Management
+
+- **[GitHub Project Board](https://github.com/users/hsuani/projects)** — Epics, Stories, Sprint tracking
+- [Project Charter](docs/project-charter.md) — goal, scope, timeline
+- [Risk Register](docs/risk-register.md) — open / mitigated / accepted risks
+- [Architecture Decision Records](docs/adr/) — 5 ADRs covering model choice, calibration, precision selection
+- [Day-by-day notes](notes/) — daily logs, retros, hyperparameter ablation
+
 ## Why this project
 
 Smartphone ISP work taught me one thing the AOI literature undersells: **detection accuracy is upstream-bounded by sensor and pipeline image quality**. A model that hits 99% AUC on clean MVTec data can collapse under realistic factory conditions — exposure drift, sensor noise, alignment jitter — which the standard benchmarks ignore.
