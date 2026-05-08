@@ -6,7 +6,7 @@ End-to-end Automated Optical Inspection (AOI) defect detection MVP on the NVIDIA
 
 ## Project Management
 
-- **[GitHub Project Board](https://github.com/users/hsuani/projects)** — Epics, Stories, Sprint tracking
+- **[GitHub Project Board](https://github.com/users/hsuani/projects/1)** — Epics, Stories, Sprint tracking
 - [Project Charter](docs/project-charter.md) — goal, scope, timeline
 - [Risk Register](docs/risk-register.md) — open / mitigated / accepted risks
 - [Architecture Decision Records](docs/adr/) — 5 ADRs covering model choice, calibration, precision selection
