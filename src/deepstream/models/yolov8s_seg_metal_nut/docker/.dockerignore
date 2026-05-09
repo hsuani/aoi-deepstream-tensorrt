@@ -1,0 +1,14 @@
+benchmarks/engines/*
+benchmarks/b1/*
+benchmarks/b4/*
+benchmarks/ds/ds_s*_run*.log
+benchmarks/ds/perf_summary.json
+samples/*.mp4
+samples/*.ogv
+samples/kitti_output/*
+sources/test_images/*
+reports/charts/*
+reports/*.pdf
+reports/*.html
+**/__pycache__
+**/*.pyc

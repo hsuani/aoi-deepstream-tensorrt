@@ -73,7 +73,21 @@ gst-reaper-*
 *.mp4
 *.mov
 *.avi
+*.ogv
 !docs/demo*.mp4
+!docs/deepstream_demo.mp4
+
+# DeepStream skill artifacts — commit code/config but skip large run outputs
+src/deepstream/models/*/model/*.onnx
+src/deepstream/models/*/model/*.cache
+src/deepstream/models/*/benchmarks/engines/
+src/deepstream/models/*/benchmarks/**/timing.cache
+src/deepstream/models/*/samples/*.mp4
+src/deepstream/models/*/samples/*.ogv
+src/deepstream/models/*/sources/test_images/*.mp4
+src/deepstream/models/*/sources/test_images/*.ogv
+src/deepstream/models/*/parser/*.so
+src/deepstream/models/*/parser/*.o
 
 # Secrets
 *.pem

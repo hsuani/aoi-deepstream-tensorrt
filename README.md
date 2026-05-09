@@ -148,7 +148,9 @@ Pending NVIDIA LaunchPad lab approval; instructions land when the pipeline is co
 - [x] **D2** — MVTec AD baseline (3 classes; metal_nut mAP@50 0.75; transistor / cable cross-class study)
 - [x] **D3** — ONNX export with dynamic batch + onnxruntime verification
 - [x] **D4** — TensorRT FP32 / FP16 / INT8 build + benchmark on Tesla T4 (5.22× INT8 speedup)
-- [ ] **D5-D7** — DeepStream multi-stream pipeline + 30-sec demo video
+- [x] **D5** — GCP L4 VM + NGC DeepStream 9.0 environment (driver 590, Ubuntu 24.04, NV stack alive)
+- [x] **D6** — `deepstream-byovm` skill autonomous mode generated end-to-end pipeline scaffolding (det-only path per ADR-0006)
+- [ ] **D7** — Pipeline run on L4 → multi-stream PDF benchmark report → 30-sec demo video; optional Path B custom seg parser stretch
 - [ ] **D8-D9** — ISP-aware augmentation robustness study per precision
 - [ ] **D10-D14** — Documentation polish, blog post, NVIDIA Inception application
 - [ ] _Stretch_ — EfficientAD secondary baseline; Jetson Orin Nano deployment
