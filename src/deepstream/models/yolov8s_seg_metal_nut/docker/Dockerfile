@@ -12,12 +12,12 @@
 #     -v /path/to/mvtec/metal_nut/test:/data/mvtec/metal_nut/test:ro \
 #     aoi-metal-nut:ds9 all
 
-FROM nvcr.io/nvidia/deepstream:9.0-triton-multiarch
+FROM nvcr.io/nvidia/deepstream:9.0-samples-multiarch
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     GST_DEBUG=1 \
-    CUDA_VER=12.8 \
+    CUDA_VER=13.1 \
     DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
