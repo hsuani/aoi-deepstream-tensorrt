@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Pre-bundle metal_nut/test PNGs into 4 loop video files for the 4-stream
-# deepstream-app benchmark. Each stream uses an identical loop file (same
-# distribution; deepstream-app feeds them into 4 parallel sources).
-#
-# Encoder: NVENC -> .mp4 if available, else theoraenc -> .ogv.
 set -euo pipefail
 
 MODEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCES_DIR="$MODEL_DIR/sources/test_images"
 IMAGES_ROOT="${IMAGES_ROOT:-/data/mvtec/metal_nut/test}"
 FPS="${FPS:-15}"
-DURATION_SEC="${DURATION_SEC:-30}"
+DURATION_SEC="${DURATION_SEC:-120}"
 NUM_BUF=$((FPS * DURATION_SEC))
 
 mkdir -p "$SOURCES_DIR"
@@ -25,41 +20,40 @@ while IFS= read -r src; do
   i=$((i + 1))
 done < <(find "$IMAGES_ROOT" -type f -name '*.png' | sort)
 [ "$i" -eq 0 ] && { echo "ERROR: no PNGs under $IMAGES_ROOT"; exit 1; }
-echo "Staged $i frames into $STAGING"
+echo "Staged $i frames into $STAGING; target NUM_BUF=$NUM_BUF (~${DURATION_SEC}s @ ${FPS}fps)"
 
-if gst-inspect-1.0 nvv4l2h264enc >/dev/null 2>&1 && [ -e /dev/v4l2-nvenc ]; then
-  EXT=mp4
-else
-  EXT=ogv
-fi
-echo "Encoder mode: $EXT"
-
+EXT=mp4
 OUT_MASTER="$SOURCES_DIR/test_loop_master.${EXT}"
-if [ "$EXT" = "mp4" ]; then
-  gst-launch-1.0 -e \
-    multifilesrc location="$STAGING/img_%05d.png" caps="image/png,framerate=${FPS}/1" loop=true num-buffers=$NUM_BUF ! \
-    pngdec ! videoconvert ! videoscale ! "video/x-raw,width=1280,height=720,format=I420" ! \
-    nvvideoconvert ! "video/x-raw(memory:NVMM),format=NV12" ! \
-    nvv4l2h264enc bitrate=4000000 ! h264parse ! mp4mux ! \
-    filesink location="$OUT_MASTER"
+
+if gst-inspect-1.0 x264enc >/dev/null 2>&1; then
+  ENC_CHAIN="x264enc bitrate=4000 speed-preset=ultrafast tune=zerolatency key-int-max=30 ! h264parse ! mp4mux"
+elif gst-inspect-1.0 openh264enc >/dev/null 2>&1; then
+  ENC_CHAIN="openh264enc bitrate=4000000 ! h264parse ! mp4mux"
 else
-  gst-launch-1.0 -e \
-    multifilesrc location="$STAGING/img_%05d.png" caps="image/png,framerate=${FPS}/1" loop=true num-buffers=$NUM_BUF ! \
-    pngdec ! videoconvert ! videoscale ! "video/x-raw,width=1280,height=720,format=I420" ! \
-    theoraenc quality=48 ! oggmux ! \
-    filesink location="$OUT_MASTER"
+  echo "ERROR: no h264 encoder available"
+  exit 1
 fi
+echo "Encoder chain: $ENC_CHAIN"
+
+gst-launch-1.0 -e \
+  multifilesrc location="$STAGING/img_%05d.png" caps="image/png,framerate=${FPS}/1" \
+    loop=true num-buffers=$NUM_BUF ! \
+  pngdec ! videoconvert ! videoscale ! \
+  "video/x-raw,width=1280,height=720,format=I420" ! \
+  $ENC_CHAIN ! \
+  filesink location="$OUT_MASTER"
+
+ls -lh "$OUT_MASTER"
 
 for s in 0 1 2 3; do
   cp -f "$OUT_MASTER" "$SOURCES_DIR/test_loop_${s}.${EXT}"
 done
-ls -l "$SOURCES_DIR"
+ls -lh "$SOURCES_DIR"
 
-# Patch ds_app config if extension differs from default .mp4
+# Patch ds_app config: .ogv -> .mp4 + drop invalid file-loop key
 DS_CFG="$MODEL_DIR/benchmarks/ds/ds_app_4stream.txt"
-if [ "$EXT" = "ogv" ] && [ -f "$DS_CFG" ]; then
-  sed -i.bak 's|test_loop_\([0-9]\).mp4|test_loop_\1.ogv|g' "$DS_CFG"
-  echo "Patched $DS_CFG to use .ogv sources"
-fi
+sed -i.bak 's|test_loop_\([0-9]\)\.ogv|test_loop_\1.mp4|g' "$DS_CFG"
+sed -i '/^file-loop=1/d' "$DS_CFG"
+echo "Patched $DS_CFG"
 
-echo "Loop sources ready: $SOURCES_DIR/test_loop_{0,1,2,3}.${EXT}"
+echo "DONE: $SOURCES_DIR/test_loop_{0,1,2,3}.${EXT}"

@@ -93,3 +93,9 @@ src/deepstream/models/*/parser/*.o
 *.pem
 *.key
 .env.local
+src/deepstream/models/*/benchmarks/**/*.bak
+
+# Allow benchmark run logs (small, valuable for reproducibility)
+!src/deepstream/models/*/benchmarks/b1/*.log
+!src/deepstream/models/*/benchmarks/b4/*.log
+!src/deepstream/models/*/benchmarks/ds/*.log

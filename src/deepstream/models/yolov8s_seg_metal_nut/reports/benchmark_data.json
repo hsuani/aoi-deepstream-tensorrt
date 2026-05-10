@@ -2,12 +2,12 @@
   "model": "yolov8s_seg_metal_nut",
   "trtexec": {
     "b1": {
-      "throughput_qps": 539.807,
+      "throughput_qps": 562.115,
       "latency_mean_ms": 0.0,
       "latency_median_ms": 0.0
     },
     "b4": {
-      "throughput_qps": 201.988,
+      "throughput_qps": 208.171,
       "latency_mean_ms": 0.0,
       "latency_median_ms": 0.0
     }
@@ -15,20 +15,46 @@
   "ds": {
     "run1": {
       "num_streams": 4,
-      "fps_per_stream": 0.0,
-      "total_fps": 0.0,
-      "timeline": [],
+      "fps_per_stream": 116.17,
+      "total_fps": 464.68,
+      "timeline": [
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        161.4,
+        161.4,
+        161.4,
+        161.4,
+        185.6,
+        185.6,
+        185.6,
+        185.6
+      ],
       "log": "benchmarks/ds/ds_s4_run1.log"
     },
     "run2": {
       "num_streams": 4,
-      "fps_per_stream": 0.0,
-      "total_fps": 0.0,
-      "timeline": [],
+      "fps_per_stream": 116.43,
+      "total_fps": 465.72,
+      "timeline": [
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        163.6,
+        163.2,
+        163.2,
+        163.6,
+        184.4,
+        184.4,
+        184.4,
+        184.4
+      ],
       "log": "benchmarks/ds/ds_s4_run2.log"
     }
   },
   "kitti": {
-    "defect": 476
+    "defect": 9876
   }
 }

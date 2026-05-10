@@ -1,0 +1,6 @@
+{
+  "num_streams": 4,
+  "run1": {"fps_per_stream": 116.17, "total_fps": 464.68, "log": "ds_s4_run1.log"},
+  "run2": {"fps_per_stream": 116.43, "total_fps": 465.72, "log": "ds_s4_run2.log"},
+  "real_time_30fps": "YES"
+}

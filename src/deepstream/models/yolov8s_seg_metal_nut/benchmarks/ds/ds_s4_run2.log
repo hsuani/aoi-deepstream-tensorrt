@@ -1,0 +1,296 @@
+0:00:00.205986698 [36m   71[00m 0x586afe35b340 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:725:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::deserializeEngineAndBackend() <nvdsinfer_context_impl.cpp:2183> [UID = 1]: deserialized trt engine from :/app/benchmarks/engines/yolov8s_seg_metal_nut_dynamic_b4.engine
+0:00:00.206054053 [36m   71[00m 0x586afe35b340 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:725:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::generateBackendContext() <nvdsinfer_context_impl.cpp:2286> [UID = 1]: Use deserialized engine model: /app/benchmarks/engines/yolov8s_seg_metal_nut_dynamic_b4.engine
+0:00:00.230459110 [36m   71[00m 0x586afe35b340 [36mINFO   [00m [00m             nvinfer gstnvinfer_impl.cpp:343:notifyLoadModelStatus:<primary_gie>[00m [UID 1]: Load new model:/app/benchmarks/ds/config_infer_ds_yolov8s_seg_metal_nut.txt sucessfully
+INFO: ../nvdsinfer/nvdsinfer_model_builder.cpp:376 [FullDims Engine Info]: layers num: 3
+0   INPUT  kFLOAT images          3x640x640       min: 1x3x640x640     opt: 4x3x640x640     Max: 4x3x640x640     
+1   OUTPUT kFLOAT output0         37x8400         min: 0               opt: 0               Max: 0               
+2   OUTPUT kFLOAT output1         32x160x160      min: 0               opt: 0               Max: 0               
+
+
+Runtime commands:
+	h: Print this help
+	q: Quit
+
+	p: Pause
+	r: Resume
+
+** INFO: <bus_callback:637>: Pipeline ready
+
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+
+
+
+
+
+
+** INFO: <bus_callback:623>: Pipeline running
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	FPS 2 (Avg)	FPS 3 (Avg)	
+**PERF:  163.60 (184.09)	163.20 (186.19)	163.20 (186.19)	163.60 (184.09)	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**PERF:  184.40 (184.25)	184.40 (185.23)	184.40 (185.23)	184.40 (184.25)	
+
+
+
+
+
+
+
+
+nvstreammux: Successfully handled EOS for source_id=0
+nvstreammux: Successfully handled EOS for source_id=3
+nvstreammux: Successfully handled EOS for source_id=2
+nvstreammux: Successfully handled EOS for source_id=1
+0:00:10.352695793 [36m   71[00m 0x75156c001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 0
+
+0:00:10.352784069 [36m   71[00m 0x75156c001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 3
+
+0:00:10.353147420 [36m   71[00m 0x75156c001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 2
+
+0:00:10.353227435 [36m   71[00m 0x75156c001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 1
+
+** INFO: <bus_callback:680>: Received EOS. Exiting ...
+
+Quitting
+0:00:11.451103260 [36m   71[00m 0x586afe35b340 [31;01mERROR  [00m [00;43m             GST_BUS gstbus.c:1074:gst_bus_remove_watch:<bus1>[00m no bus watch was present
+App run successful

@@ -18,11 +18,11 @@
 - Engine: `benchmarks/engines/yolov8s_seg_metal_nut_dynamic_b4.engine`
 
 ## 4. trtexec BS=1
-- Throughput: 539.81 qps
+- Throughput: 562.12 qps
 - Latency mean / median: 0.00 / 0.00 ms
 
 ## 5. trtexec BS=4
-- Throughput: 201.99 batches/s = 807.95 img/s
+- Throughput: 208.17 batches/s = 832.68 img/s
 - Latency mean / median: 0.00 / 0.00 ms
 
 ![Throughput](charts/chart_throughput.png)
@@ -31,10 +31,10 @@
 ## 6. DeepStream Multi-Stream (batch=4, 4 streams)
 | Run | Streams | fps/stream | total img/s | DS efficiency |
 |-----|---------|------------|-------------|---------------|
-| Run 1 | 4 | 0.00 | 0.00 | 0.0% |
-| Run 2 | 4 | 0.00 | 0.00 | 0.0% |
+| Run 1 | 4 | 116.17 | 464.68 | 55.8% |
+| Run 2 | 4 | 116.43 | 465.72 | 55.9% |
 
-Real-time @ 30 fps/stream: **NO**
+Real-time @ 30 fps/stream: **YES**
 
 ![DS Efficiency](charts/chart_ds_efficiency.png)
 ![PERF Timeline](charts/chart_perf_timeline.png)

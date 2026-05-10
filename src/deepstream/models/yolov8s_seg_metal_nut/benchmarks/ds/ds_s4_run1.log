@@ -1,0 +1,331 @@
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.602: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstdtsdec.so': libdca.so.0: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.602: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstresindvd.so': libdvdnav.so.4: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.616: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstfluidsynthmidi.so': libFLAC.so.12: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.629: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstdvdread.so': libdvdread.so.8: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.632: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstmplex.so': libmjpegutils-2.1.so.0: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.684: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstspandsp.so': libjbig.so.0: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.719: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstmpg123.so': libmpg123.so.0: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.725: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstopenmpt.so': libmpg123.so.0: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.725: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstlame.so': libmp3lame.so.0: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.788: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstsndfile.so': libFLAC.so.12: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.792: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstpulseaudio.so': libFLAC.so.12: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.799: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstlibav.so': libvpx.so.9: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.799: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvpx.so': libvpx.so.9: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.800: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstflac.so': libFLAC.so.12: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.887: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/deepstream/libnvdsgst_udp.so': librivermax.so.1: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.905: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/deepstream/libnvdsgst_inferserver.so': libtritonserver.so: cannot open shared object file: No such file or directory
+
+(gst-plugin-scanner:15): GStreamer-WARNING **: 10:26:02.924: Failed to load plugin '/usr/lib/x86_64-linux-gnu/gstreamer-1.0/deepstream/libnvdsgst_ucx.so': libucs.so.0: cannot open shared object file: No such file or directory
+0:00:00.644639651 [32m   13[00m 0x6037dc374230 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:725:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::deserializeEngineAndBackend() <nvdsinfer_context_impl.cpp:2183> [UID = 1]: deserialized trt engine from :/app/benchmarks/engines/yolov8s_seg_metal_nut_dynamic_b4.engine
+0:00:00.644703119 [32m   13[00m 0x6037dc374230 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:725:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::generateBackendContext() <nvdsinfer_context_impl.cpp:2286> [UID = 1]: Use deserialized engine model: /app/benchmarks/engines/yolov8s_seg_metal_nut_dynamic_b4.engine
+0:00:00.669056559 [32m   13[00m 0x6037dc374230 [36mINFO   [00m [00m             nvinfer gstnvinfer_impl.cpp:343:notifyLoadModelStatus:<primary_gie>[00m [UID 1]: Load new model:/app/benchmarks/ds/config_infer_ds_yolov8s_seg_metal_nut.txt sucessfully
+INFO: ../nvdsinfer/nvdsinfer_model_builder.cpp:376 [FullDims Engine Info]: layers num: 3
+0   INPUT  kFLOAT images          3x640x640       min: 1x3x640x640     opt: 4x3x640x640     Max: 4x3x640x640     
+1   OUTPUT kFLOAT output0         37x8400         min: 0               opt: 0               Max: 0               
+2   OUTPUT kFLOAT output1         32x160x160      min: 0               opt: 0               Max: 0               
+
+
+Runtime commands:
+	h: Print this help
+	q: Quit
+
+	p: Pause
+	r: Resume
+
+** INFO: <bus_callback:637>: Pipeline ready
+
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+
+
+
+
+
+
+** INFO: <bus_callback:623>: Pipeline running
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	FPS 2 (Avg)	FPS 3 (Avg)	
+**PERF:  161.40 (187.44)	161.40 (187.44)	161.40 (187.44)	161.40 (187.44)	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**PERF:  185.60 (186.44)	185.60 (186.44)	185.60 (186.44)	185.60 (186.44)	
+
+
+
+
+
+
+
+
+nvstreammux: Successfully handled EOS for source_id=3
+nvstreammux: Successfully handled EOS for source_id=2
+nvstreammux: Successfully handled EOS for source_id=0
+nvstreammux: Successfully handled EOS for source_id=1
+
+0:00:10.793886159 [32m   13[00m 0x731488001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 2
+
+0:00:10.793998632 [32m   13[00m 0x731488001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 1
+
+0:00:10.794076787 [32m   13[00m 0x731488001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 0
+
+0:00:10.794203408 [32m   13[00m 0x731488001300 [31;01mERROR  [00m [00m       nvstreamdemux gstnvstreamdemux.cpp:581:gst_nvstreamdemux_sink_event:<demuxer>[00m Got EOS from stream 3
+
+** INFO: <bus_callback:680>: Received EOS. Exiting ...
+
+Quitting
+0:00:11.928542028 [32m   13[00m 0x6037dc374230 [31;01mERROR  [00m [00;43m             GST_BUS gstbus.c:1074:gst_bus_remove_watch:<bus1>[00m no bus watch was present
+App run successful

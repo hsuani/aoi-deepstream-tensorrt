@@ -71,6 +71,24 @@ on val set deferred to production hardware verification.
 
 Full benchmark methodology + reproducibility: [`benchmarks/trt-t4.md`](benchmarks/trt-t4.md).
 
+### DeepStream Multi-Stream — NVIDIA L4 GPU (GCP), DS 9.0, INT8, batch=4
+
+| Run | fps / stream | total img/s | RT @ 30 fps/stream |
+|-----|--------------|-------------|---------------------|
+| 1   | 116.17       | 464.68      | ✅ 3.8× headroom    |
+| 2   | 116.43       | 465.72      | ✅                  |
+
+L4 vs T4 (D4): INT8 BS=1 throughput 478 → 562 qps (~1.18× speedup).
+DeepStream pipeline overhead absorbs ~44% of raw `trtexec` throughput (832 → 465
+img/s) — within typical DS production envelope (decode + memcpy + nvinfer + osd
++ sink). KITTI dump confirms parser correctness with 9 876 metal_nut defect
+detections across the 4-stream run.
+
+Skill-orchestrated via NVIDIA `deepstream-byovm` agentic skill (det-only path
+per [ADR-0006](docs/adr/0006-detection-only-deployment.md)).
+
+Full PDF report: [`benchmark_report.pdf`](src/deepstream/models/yolov8s_seg_metal_nut/reports/benchmark_report_yolov8s_seg_metal_nut.pdf).
+
 ### ISP-aware Robustness Study _(planned, week 2)_
 
 Re-benchmark on perturbed test set:
@@ -150,7 +168,7 @@ Pending NVIDIA LaunchPad lab approval; instructions land when the pipeline is co
 - [x] **D4** — TensorRT FP32 / FP16 / INT8 build + benchmark on Tesla T4 (5.22× INT8 speedup)
 - [x] **D5** — GCP L4 VM + NGC DeepStream 9.0 environment (driver 590, Ubuntu 24.04, NV stack alive)
 - [x] **D6** — `deepstream-byovm` skill autonomous mode generated end-to-end pipeline scaffolding (det-only path per ADR-0006)
-- [ ] **D7** — Pipeline run on L4 → multi-stream PDF benchmark report → 30-sec demo video; optional Path B custom seg parser stretch
+- [x] **D7** — DS 9.0 multi-stream pipeline on L4 (4 streams × 116 fps = 465 img/s aggregate, INT8); skill-orchestrated; PDF benchmark report committed
 - [ ] **D8-D9** — ISP-aware augmentation robustness study per precision
 - [ ] **D10-D14** — Documentation polish, blog post, NVIDIA Inception application
 - [ ] _Stretch_ — EfficientAD secondary baseline; Jetson Orin Nano deployment
