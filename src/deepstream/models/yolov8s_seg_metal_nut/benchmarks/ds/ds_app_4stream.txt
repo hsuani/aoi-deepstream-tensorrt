@@ -12,7 +12,7 @@ enable=0
 [source0]
 enable=1
 type=3
-uri=file://../../sources/test_images/test_loop_0.mp4
+uri=file://../../sources/test_images/test_loop_0.ogv
 num-sources=1
 gpu-id=0
 cudadec-memtype=0
@@ -20,7 +20,7 @@ cudadec-memtype=0
 [source1]
 enable=1
 type=3
-uri=file://../../sources/test_images/test_loop_1.mp4
+uri=file://../../sources/test_images/test_loop_1.ogv
 num-sources=1
 gpu-id=0
 cudadec-memtype=0
@@ -28,7 +28,7 @@ cudadec-memtype=0
 [source2]
 enable=1
 type=3
-uri=file://../../sources/test_images/test_loop_2.mp4
+uri=file://../../sources/test_images/test_loop_2.ogv
 num-sources=1
 gpu-id=0
 cudadec-memtype=0
@@ -36,7 +36,7 @@ cudadec-memtype=0
 [source3]
 enable=1
 type=3
-uri=file://../../sources/test_images/test_loop_3.mp4
+uri=file://../../sources/test_images/test_loop_3.ogv
 num-sources=1
 gpu-id=0
 cudadec-memtype=0

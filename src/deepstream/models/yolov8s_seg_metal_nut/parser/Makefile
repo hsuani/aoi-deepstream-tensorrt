@@ -2,7 +2,7 @@ DEEPSTREAM_DIR ?= /opt/nvidia/deepstream/deepstream
 CUDA_VER ?= 12.8
 CC := g++
 CFLAGS := -Wall -O2 -std=c++14 -shared -fPIC
-CFLAGS += -I$(DEEPSTREAM_DIR)/sources/includes -I/usr/local/cuda/include
+CFLAGS += -I$(DEEPSTREAM_DIR)/sources/includes -I/usr/local/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include
 LIBS := -lnvinfer
 LFLAGS := -Wl,--start-group $(LIBS) -Wl,--end-group
 

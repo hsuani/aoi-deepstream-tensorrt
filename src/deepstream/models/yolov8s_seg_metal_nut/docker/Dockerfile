@@ -20,23 +20,25 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CUDA_VER=13.1 \
     DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         build-essential \
         python3 python3-pip python3-venv \
-        git wget curl jq bc \
+        git wget curl jq bc ca-certificates \
         libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
         gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-tools \
         wkhtmltopdf \
+        cuda-cudart-dev-13-1 cuda-cccl-13-1 cuda-crt-13-1 \
     && rm -rf /var/lib/apt/lists/*
 
 # pyservicemaker wheel ships in DS 9.0 sources; install into system Python.
 RUN PSM_WHL=$(ls $DEEPSTREAM_DIR/service-maker/sources/python/wheels/pyservicemaker-*.whl 2>/dev/null \
                || ls $DEEPSTREAM_DIR/sources/python/pyservicemaker/wheels/pyservicemaker-*.whl 2>/dev/null \
                | head -1) && \
-    if [ -n "$PSM_WHL" ]; then pip3 install --no-cache-dir "$PSM_WHL"; \
+    if [ -n "$PSM_WHL" ]; then pip3 install --no-cache-dir --break-system-packages "$PSM_WHL"; \
     else echo "WARN: pyservicemaker wheel not found in image"; fi
 
-RUN pip3 install --no-cache-dir \
+RUN pip3 install --no-cache-dir --break-system-packages \
         numpy matplotlib markdown Pillow onnxruntime
 
 WORKDIR /app
@@ -58,6 +60,8 @@ RUN make -C /app/parser \
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chmod +x /app/scripts/*.sh /app/scripts/*.py
+
+RUN ln -sf /usr/src/tensorrt/bin/trtexec /usr/local/bin/trtexec
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["all"]
