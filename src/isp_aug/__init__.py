@@ -3,10 +3,10 @@
 Three perturbation types calibrated for MVTec metal_nut:
 - noise:     linear-domain Poisson + Gaussian (signal-dependent + read noise)
 - exposure:  linear-domain gain + WB drift + gamma offset
-- alignment: rotation + translation + anisotropic scale     (TODO)
+- alignment: rotation + translation + anisotropic scale (single affine)
 
 Severity levels 1 / 2 / 3 (mild / moderate / severe).
 """
-from . import exposure, noise
+from . import alignment, exposure, noise
 
-__all__ = ["noise", "exposure"]
+__all__ = ["noise", "exposure", "alignment"]
