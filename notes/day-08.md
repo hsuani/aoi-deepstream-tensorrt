@@ -86,13 +86,42 @@ uint8 BGR (cv2 default) → uint8 BGR.
 3. ISO/gain push (multiplicative — boosts both Poisson + Gaussian)
 4. (bonus) Per-channel σ asymmetry (Bayer pattern simulation)
 
-**Severity table** (calibrated for metal_nut mid-gray DN range 30-150):
+**Severity table** (calibrated for metal_nut mid-gray DN range 30-150 — final
+post-tune; see "Tuning round 1 — noise" subsection below):
 
 | Severity | shot_scale | read_sigma | gain | Real-world analog |
 |---|---|---|---|---|
-| 1 mild | 1000 | 0.005 | 1.0× | Production lab, base ISO |
-| 2 moderate | 200 | 0.02 | 2.0× | Aged LED light, ISO push for compensation |
-| 3 severe | 50 | 0.05 | 4.0× | Low-light line, ISO 800+ |
+| 1 mild | 400 | 0.010 | 1.0× | Production line normal (LED 1-6 mo aged) |
+| 2 moderate | 200 | 0.020 | 2.0× | Aged LED + ISO 200-400 push |
+| 3 severe | 50 | 0.050 | 4.0× | Low-light line, ISO 800+ (degraded) |
+
+#### Tuning round 1 — noise (post-visual-sanity inspection, 2026-05-11)
+
+Initial s1 was set to `(shot=1000, read=0.005, gain=1.0)` — visually
+indistinguishable from clean baseline (mean_diff ≈ 6.6 / max_diff ≈ 51).
+Corresponded to a **freshly calibrated lab golden** setup (SNR > 50 dB)
+rather than a real production line.
+
+Production line spectrum (stable → degraded):
+
+| Production state | SNR (dB) | Initial map | Tuned map |
+|---|---|---|---|
+| Lab golden (LED new, just-calibrated, zero vibration) | > 50 | s1 ❌ wastes a cell | (skipped — not deployed reality) |
+| **Production line normal** (LED 1-6 mo aged + thermal drift + day/night) | **30-40** | (gap) | **s1** ✅ |
+| Mild wear / LED 1-2 yr (-20-30% lumens) + ISO 1.5-2× | 20-30 | s2 | s2 (unchanged) |
+| Severe LED end-of-life + ISO 4× + occasional dust | 15-20 | s3 | s3 (unchanged) |
+| Out-of-spec failure | < 10 | (skipped) | (skipped) |
+
+Initial s1 mapped to "Lab golden" wasted a measurement cell — expected mAP
+delta vs clean baseline < 1%, low discriminative information for D9.
+
+Post-tune (`shot=400, read=0.010, gain=1.0`) maps s1 to "Production line
+normal", so the s1 → s2 → s3 progression tracks **degrading operational
+reality** rather than a "lab → industrial" jump.
+
+Sanity verification (post-tune, on `data/mvtec/metal_nut/test/good/000.png`,
+seed=42, per_channel=True): see commit message of `87258a8` follow-up tune
+commit. Monotonic clean → s1 → s2 → s3 mean_diff increase preserved.
 
 **Pipeline**:
 ```
