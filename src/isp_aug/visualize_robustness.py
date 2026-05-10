@@ -25,11 +25,11 @@ import numpy as np
 
 
 SAMPLES_MULTI = [
-    ("good_test_010", "good (no defect — should detect nothing)"),
-    ("bent_006", "bent (single defect)"),
-    ("scratch_007", "scratch (multiple thin lines)"),
-    ("color_001", "color (tonal anomaly)"),
-    ("flip_001", "flip (orientation)"),
+    ("good_test_010", "good"),
+    ("bent_006", "bent"),
+    ("scratch_007", "scratch"),
+    ("color_001", "color"),
+    ("flip_001", "flip"),
 ]
 
 SAMPLE_DEEP = "scratch_007"  # rich multi-defect sample for severity progression

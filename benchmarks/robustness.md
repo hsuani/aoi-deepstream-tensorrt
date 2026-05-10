@@ -180,10 +180,58 @@ python -m src.isp_aug.eval_robustness \
 
 ---
 
-## 6. Next steps (D9)
+## 6. Per-Defect-Type Breakdown
 
+Aggregate mAP hides defect-type-specific behavior. Re-running with val
+filtered by filename prefix (one sub-eval per defect type per cell, 52
+runs total) reveals:
+
+mAP@50 (mask), per-defect-type pivot (`benchmarks/robustness_per_defect.csv`):
+
+| Cell | bent | color | flip | scratch |
+|---|---|---|---|---|
+| **baseline** | 0.9950 | **0.3962** | 0.9950 | 0.7124 |
+| noise_s1 | 0.0019 | 0.0318 | 0.0000 | 0.1277 |
+| noise_s2 | 0.0011 | 0.0277 | 0.0000 | 0.1038 |
+| noise_s3 | 0.0007 | 0.0134 | 0.0000 | 0.0050 |
+| exposure_s1 | 0.9950 | 0.3503 | 0.9950 | 0.7090 |
+| exposure_s2 | 0.9950 | **0.4008** | 0.9950 | 0.6974 |
+| exposure_s3 | 0.9950 | **0.4043** | 0.9950 | 0.6712 |
+| alignment_s1 | 0.9950 | 0.2750 | **0.9950** | 0.7150 |
+| alignment_s2 | **0.0950** | 0.0730 | **0.9950** | 0.3769 |
+| alignment_s3 | 0.0000 | 0.0399 | **0.9950** | 0.0845 |
+| combined_s1 | 0.0040 | 0.0196 | 0.0002 | 0.0753 |
+| combined_s2 | 0.0000 | 0.0016 | 0.0961 | 0.0282 |
+| combined_s3 | 0.0000 | 0.0001 | 0.0009 | 0.0003 |
+
+### Per-defect insights
+
+- **flip is alignment-invariant**: 0.995 across all 3 alignment severities.
+  The model learned rotation-equivariant features for flip detection because
+  the flip-defect concept itself is orientation-anomaly — training implicitly
+  taught the model that orientation matters semantically, so spatial
+  rotation does not break the cue.
+- **color baseline is the bottleneck**: even on clean data, color reaches
+  only 0.396 (vs 0.995 for bent/flip). The color defect type (subtle
+  oxidation / contamination) is fundamentally harder than geometric anomalies.
+  Aggregate baseline 0.75 mAP is dragged down primarily by color.
+- **Color slightly improves under exposure**: s2 0.401 / s3 0.404 — both
+  marginally above clean baseline 0.396. Linear gain push enhances tonal
+  contrast, which is the dominant cue for color defects. This is a real
+  ISP-engineering insight: a calibrated gain offset *helps* color detection,
+  unlike geometric defects.
+- **scratch + noise = catastrophic**: scratch baseline 0.712 → 0.128 at
+  noise_s1 → 0.005 at noise_s3. Scratch is a high-frequency cue (thin lines)
+  which noise drowns first. Production implication: lines inspecting for
+  scratches need denoising preprocessing OR noise-augmented training.
+- **bent has alignment cliff at s2**: 0.995 → 0.095. Bent-defect detection
+  relies on edge contour angle; combined rotation + translation + anisotropic
+  scale at s2 disrupts the geometric cue without entering training-aug range.
+
+## 7. Next steps (D9)
+
+- [x] Per-defect-type breakdown
 - [ ] Heatmap visualization (severity × perturbation grid)
-- [ ] Per-defect-type breakdown (scratch / color / bent / flip individually)
 - [ ] (v2) Cross-precision FP32 / FP16 / INT8 matrix on GCP L4
 - [ ] (v2) Label-transform-aware alignment cells for pure model-robustness measurement
 - [ ] (v2) Noise-augmented retrain experiment — is robustness gap closable?

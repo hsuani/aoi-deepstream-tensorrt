@@ -100,14 +100,59 @@ per [ADR-0006](docs/adr/0006-detection-only-deployment.md)).
 
 Full PDF report: [`benchmark_report.pdf`](src/deepstream/models/yolov8s_seg_metal_nut/reports/benchmark_report_yolov8s_seg_metal_nut.pdf).
 
-### ISP-aware Robustness Study _(planned, week 2)_
+### ISP-aware Robustness Study (D8)
 
-Re-benchmark on perturbed test set:
-- Sensor noise (Gaussian + Poisson, three intensities)
-- Exposure drift (±2 EV)
-- Alignment jitter (rotation ±3°, translation ±5 px)
+Three perturbation modules ([`src/isp_aug/`](src/isp_aug/)) calibrated for
+production-line spectrum, all linear-domain physics (de-gamma → perturb →
+re-gamma):
 
-Hypothesis: INT8 quantization amplifies sensitivity to low-SNR inputs. To be measured.
+- **noise**: Poisson shot + Gaussian read + ISO/gain push + Bayer-pattern asymmetry
+- **exposure**: linear gain + WB drift (per-100K R/B asymmetry) + gamma offset
+- **alignment**: rotation + translation + anisotropic scale (single affine)
+
+13-cell mAP@50 (mask) matrix, baseline = 0.7502:
+
+| Perturbation | s1 | s2 | s3 |
+|---|---|---|---|
+| noise | 0.034 (-95%) | 0.030 | 0.001 (-99.8%) |
+| exposure | 0.741 (-1%) | 0.749 | 0.733 (-2%) |
+| alignment | 0.698 (-7%) | 0.309 | 0.126 (-83%) |
+| combined | 0.018 | 0.005 | 0.000 |
+
+**Empirical sensitivity ranking**: NOISE >>> ALIGNMENT > EXPOSURE
+(predicted in [ADR-0007](docs/adr/0007-isp-aware-perturbation-hypotheses.md) was
+NOISE > EXPOSURE > ALIGNMENT — partially wrong, exposure/alignment swapped).
+
+**Top finding**: production-line normal noise (SNR 30-40 dB) collapses mAP
+from 0.75 → 0.03 (-95%). Training had zero sensor-noise augmentation →
+any noise input is fully OOD. Mitigation path: integrate `noise.apply()`
+(same Poisson + Gaussian linear-domain model used for D4 INT8 calibration)
+as a training-time augmentation transform — calibration cache and training
+noise model share one physics, bridging quantization design with
+deployment robustness.
+
+**Visual proof**:
+- ![Robustness moderate](docs/robustness_grid_moderate.png)
+
+  5 sample images × 5 cells at moderate severity. Clean detects defects
+  cleanly; noise / combined produce "blue-blob" oversized masks; exposure
+  preserves detection; alignment partial.
+
+- [Severity progression on `scratch_007`](docs/robustness_grid_severity.png)
+  shows per-perturbation degradation across s1/s2/s3.
+
+**Per-defect insights**: see
+[`benchmarks/robustness.md`](benchmarks/robustness.md) §6 +
+[`benchmarks/robustness_per_defect.csv`](benchmarks/robustness_per_defect.csv).
+- `flip` is **alignment-invariant** (mAP 0.995 across all alignment
+  severities) — model learned rotation-equivariant features for
+  orientation-defect class.
+- `color` baseline is the bottleneck (0.396), but **slightly improves**
+  under moderate/severe exposure (gain push enhances tonal contrast cue).
+- `scratch + noise` is the most fragile pairing (high-frequency cue drowns
+  in additive noise).
+
+Full methodology: [`benchmarks/robustness.md`](benchmarks/robustness.md).
 
 ## Repo layout
 
@@ -203,7 +248,8 @@ Skill-orchestrated via NVIDIA `deepstream-byovm` agentic skill (det-only, ADR-00
 - [x] **D5** — GCP L4 VM + NGC DeepStream 9.0 environment (driver 590, Ubuntu 24.04, NV stack alive)
 - [x] **D6** — `deepstream-byovm` skill autonomous mode generated end-to-end pipeline scaffolding (det-only path per ADR-0006)
 - [x] **D7** — DS 9.0 multi-stream pipeline on L4 (4 streams × 116 fps = 465 img/s aggregate, INT8); skill-orchestrated; PDF benchmark report committed
-- [ ] **D8-D9** — ISP-aware augmentation robustness study per precision
+- [x] **D8** — ISP-aware robustness study (3 perturbation modules + combined-apply, 13-cell mAP matrix + per-defect breakdown; ADR-0007 hypothesis verdicts)
+- [ ] **D9** — Heatmap viz + per-precision INT8/FP16 cross-check (deferred to GCP L4 v2)
 - [ ] **D10-D14** — Documentation polish, blog post, NVIDIA Inception application
 - [ ] _Stretch_ — EfficientAD secondary baseline; Jetson Orin Nano deployment
 
