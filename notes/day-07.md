@@ -6,9 +6,20 @@
   - `cuda-cudart-dev-13-1` + `cuda-cccl-13-1` + `cuda-crt-13-1` apt added (parser .cpp build dep).
   - Makefile include path: `/usr/local/cuda-12.8` → `/usr/local/cuda` symlink.
   - DS9 base image: `9.0-gc-triton-devel` (deprecated) → `9.0-samples-multiarch`.
-- INT8 engine rebuilt in container from ONNX + calibration cache (cache hit ~120 s).
-- Loop test videos generated Mac-side via ffmpeg + libx264 (120 s @ 15 fps, 1280×720). Container theora encoder produced 3-sec broken outputs; container lacked x264enc / openh264enc / `/dev/v4l2-nvenc`. Mac ffmpeg path was unblock.
+  - `pip3 install` + `--break-system-packages` flag (Ubuntu 24.04 / PEP 668 system Python lock).
+- TRT engine **rebuilt in DS 9.0 container on L4** — calibration cache from
+  T4 D4 (`metal_nut_int8.cache`, ~15 KB) reused as-is. Engine plan files are
+  GPU-arch + TRT-version bound, but **calibration scales are model-domain
+  bound and portable across GPUs** — direct cache reuse skipped the 5-15 min
+  re-calibration cost. Industrial deploy parallel: ship a calibration cache
+  per product line; rebuild engine per target hardware tier without revisiting
+  calibration data.
+- Loop test videos generated Mac-side via ffmpeg + libx264 (120 s @ 15 fps, 1280×720). Container theora encoder produced 3-sec broken outputs; container lacked x264enc / openh264enc / `/dev/v4l2-nvenc`. Mac ffmpeg path unblocked.
 - `ds_app_4stream.txt` patched: `.ogv` → `.mp4`; invalid `file-loop=1` removed (DS9 `[source*]` group does not accept).
+- VM provisioning: Spot scheduling + IAP firewall rule (`allow-iap-ssh` source
+  range `35.235.240.0/20` tcp:22) required for `gcloud compute ssh` without
+  external IP. Initial setup hit "4003 backend connection failed" until rule
+  added.
 - 4-stream multi-stream bench captured `**PERF` samples.
 
 ## Headline Numbers (L4 INT8, batch=4 = num_streams)
@@ -44,14 +55,26 @@ DeepStream pipeline efficiency: 808 raw → 465 aggregate ≈ 57% loss to decode
   enough for 2 sample steady-state PERF lines but not extended steady-state.
   Acceptable for production sizing — typical deploy uses RTSP (infinite stream).
 
+## Deferred
+- **30-sec demo video** with bbox overlay: `mock-factory` mode failed —
+  container lacks h264 encoder + `/dev/v4l2-nvenc` not exposed on GCP cloud
+  GPU. Workaround path planned for D8: Mac-side `ffmpeg` + `onnxruntime` CPU
+  inference + bbox draw via `scripts/make_demo_video.py` (keeps story honest;
+  deployment platform is L4, demo capture is Mac).
+- **Path B custom YOLOv8-seg parser** with mask metadata recovery: post-投遞
+  stretch (per ADR-0006 default). Adds `network-type=3` + sigmoid(proto · coef)
+  + bbox-crop to recover instance masks; demo video v2 with polygon overlay.
+
 ## Issues + Resolutions
 
 | Issue | Cause | Fix |
 |---|---|---|
 | `cuda_runtime_api.h` not found | CUDA 12.8 path; DS9 ships CUDA 13.1; runtime image lacks dev headers | apt cuda-cudart-dev-13-1 etc; samples-multiarch base; Makefile `/usr/local/cuda` symlink |
+| `pip3 install` "externally-managed-environment" | Ubuntu 24.04 PEP 668 lock | `--break-system-packages` (acceptable in container, not host) |
 | DS pipeline EOS at 3 sec | theora encoder produced 3-sec broken; `[tests]` `file-loop=1` ignored | Mac ffmpeg + libx264 120 s + ds_app config swap |
 | `file-loop=1` warn per `[source*]` | Invalid key for DS9 | Remove key, rely on long source |
-| GCP VM Spot reclaim | Spot scheduling | Cold restart; consider STANDARD model |
+| `gcloud compute ssh` 4003 backend connection failed | No external IP + missing IAP firewall rule | Add `allow-iap-ssh` rule (source `35.235.240.0/20`, tcp:22) |
+| GCP VM Spot reclaim | Spot scheduling | Cold restart; consider STANDARD model for D8 if timing-sensitive |
 | `gcloud ssh` from VM 4003 error | VM SA missing compute scope | gcloud from Mac only |
 
 ## Cost
@@ -66,6 +89,52 @@ DeepStream pipeline efficiency: 808 raw → 465 aggregate ≈ 57% loss to decode
 - Risk #10 (DeepStream nvinfer post-processing breaking changes) marked **Mitigated** —
   skill-orchestrated parser + DS9 samples-multiarch base + Mac-side video workaround
   resolved breaking changes encountered during D7 ramp.
+
+## Pre-D8 GCP Teardown (cost containment + reproducibility)
+
+D8-D9 ISP-aware aug runs Mac-side (ONNX runtime), no GPU needed. Tear down
+the L4 VM to stop billing; keep snapshot for D11+ revisit if needed.
+
+```bash
+# 1. Pull last artifacts back (already done — local repo has reports/, benchmarks/)
+gcloud compute scp --recurse --zone us-central1-a \
+  aoi-d5:~/ds-metal-nut/reports/ \
+  aoi-d5:~/ds-metal-nut/benchmarks/ \
+  src/deepstream/models/yolov8s_seg_metal_nut/
+
+# 2. Snapshot boot disk before delete (cheap storage; restorable to new VM later)
+gcloud compute disks snapshot aoi-d5 \
+  --snapshot-names=aoi-d5-d7-final \
+  --zone=us-central1-a \
+  --description="Day 7 end state — DS9 image + skill bundle + reports"
+
+# 3. Delete instance (stops compute billing)
+gcloud compute instances delete aoi-d5 --zone=us-central1-a --quiet
+
+# 4. Delete boot disk (snapshot already taken; saves ~$10/month storage)
+gcloud compute disks delete aoi-d5 --zone=us-central1-a --quiet
+
+# 5. Verify nothing left billing
+gcloud compute instances list 2>&1 | grep -v "^Listed 0"
+gcloud compute disks list 2>&1 | grep -v "^Listed 0"
+gcloud compute snapshots list   # confirm aoi-d5-d7-final present
+
+# 6. (Optional) keep IAP firewall rule for future re-spin; cheap (free)
+gcloud compute firewall-rules list | grep allow-iap-ssh
+```
+
+D11+ revisit (e.g. Path B seg parser): create new VM from snapshot:
+```bash
+gcloud compute disks create aoi-d8 --source-snapshot=aoi-d5-d7-final \
+  --zone=us-central1-a --type=pd-balanced
+gcloud compute instances create aoi-d8 \
+  --zone=us-central1-a --machine-type=g2-standard-8 \
+  --accelerator=type=nvidia-l4,count=1 \
+  --provisioning-model=SPOT \
+  --disk=name=aoi-d8,boot=yes,device-name=aoi-d8
+```
+
+Snapshot cost: ~$0.05/GB/month × 100 GB = ~$5/month idle.
 
 ## Next (D8-D9)
 - ISP-aware aug module (`src/isp_aug/`): signal-dependent noise + ±2 EV exposure + alignment jitter
