@@ -55,6 +55,17 @@ This repo benchmarks an AOI pipeline twice: once on the canonical MVTec AD test 
 
 ## Results
 
+### Live Demo
+
+![AOI defect detection demo](docs/deepstream_demo.gif)
+
+> 28-sec clip showing per-frame defect detection on 115 MVTec metal_nut test
+> images. Generated locally on Mac (Ultralytics + MPS backend) for portfolio
+> embedding; production DeepStream pipeline (D7) produces visually equivalent
+> overlays at sub-2 ms latency on NVIDIA L4 GPU (see DeepStream Multi-Stream
+> table below).
+> [Full HD mp4](docs/deepstream_demo.mp4).
+
 ### Latency / Throughput — TensorRT (NVIDIA Tesla T4, batch=1, imgsz=640)
 
 | Precision | Engine size | Build time | Latency mean | Throughput | Speedup |
