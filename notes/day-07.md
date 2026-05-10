@@ -24,6 +24,9 @@
 | BS=1 | 540 qps | 1.78 ms |
 | BS=4 | 808 img/s | 4.80 ms / batch |
 
+- KITTI dump: 9876 metal_nut defect detections across 4-stream × ~10 s window
+  (parser correctness sanity).
+
 DeepStream pipeline efficiency: 808 raw → 465 aggregate ≈ 57% loss to decode + memcpy + nvinfer + osd + sink overhead (typical for production DS pipeline).
 
 ## L4 vs T4 (D4) Comparison
@@ -37,6 +40,9 @@ DeepStream pipeline efficiency: 808 raw → 465 aggregate ≈ 57% loss to decode
 - No instance mask metadata in pipeline (det-only path).
 - KITTI accuracy gate skipped per skill rule 5.
 - DS9 `[source*]` `file-loop=1` not honored — workaround: 120 s source video so first-pass EOS arrives well past PERF capture window.
+- PERF window ~10 sec (mock factory mp4 plays once → EOS at first-pass);
+  enough for 2 sample steady-state PERF lines but not extended steady-state.
+  Acceptable for production sizing — typical deploy uses RTSP (infinite stream).
 
 ## Issues + Resolutions
 
@@ -54,6 +60,12 @@ DeepStream pipeline efficiency: 808 raw → 465 aggregate ≈ 57% loss to decode
 ## Files
 - `reports/benchmark_data.json`, `benchmark_report.{md,html,pdf}`, `charts/*.png`
 - `benchmarks/{b1,b4,ds}/*.log`
+
+## Project Tracking
+- Epic #6 (D5-D7 — DeepStream Pipeline) closed with comment summarizing D5-D7 deliverables.
+- Risk #10 (DeepStream nvinfer post-processing breaking changes) marked **Mitigated** —
+  skill-orchestrated parser + DS9 samples-multiarch base + Mac-side video workaround
+  resolved breaking changes encountered during D7 ramp.
 
 ## Next (D8-D9)
 - ISP-aware aug module (`src/isp_aug/`): signal-dependent noise + ±2 EV exposure + alignment jitter

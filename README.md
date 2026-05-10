@@ -9,7 +9,7 @@ End-to-end Automated Optical Inspection (AOI) defect detection MVP on the NVIDIA
 - **[GitHub Project Board](https://github.com/users/hsuani/projects/1)** — Epics, Stories, Sprint tracking
 - [Project Charter](docs/project-charter.md) — goal, scope, timeline
 - [Risk Register](docs/risk-register.md) — open / mitigated / accepted risks
-- [Architecture Decision Records](docs/adr/) — 5 ADRs covering model choice, calibration, precision selection
+- [Architecture Decision Records](docs/adr/) — 6 ADRs covering model choice, calibration, precision selection, deployment scope
 - [Day-by-day notes](notes/) — daily logs, retros, hyperparameter ablation
 
 ## Why this project
@@ -34,7 +34,7 @@ This repo benchmarks an AOI pipeline twice: once on the canonical MVTec AD test 
                                                        |
                                                        v
             +-------------------------------------------------------------+
-            |  DeepStream 7.x pipeline (Python)                           |
+            |  DeepStream 9.0 pipeline (Python)                           |
             |  uridecodebin -> nvstreammux -> nvinfer -> nvdsosd -> sink  |
             +-------------------------------------------------------------+
                                                        |
@@ -48,10 +48,10 @@ This repo benchmarks an AOI pipeline twice: once on the canonical MVTec AD test 
 |---|---|
 | Training | PyTorch · Ultralytics YOLOv8 · EfficientAD |
 | Export | ONNX (opset 17, dynamic batch) |
-| Optimization | TensorRT 10.x · `trtexec` · entropy calibration |
-| Streaming | DeepStream 7.x · GStreamer · `nvinfer` · `nvdsosd` |
+| Optimization | TensorRT 10.x (10.14 in DS 9.0 container) · `trtexec` · entropy calibration |
+| Streaming | DeepStream 9.0 · `pyservicemaker` · GStreamer · `nvinfer` · `nvdsosd` |
 | Dataset | MVTec AD (transistor, cable, metal_nut) |
-| Hardware | Mac M5 (MPS) for training · NVIDIA Tesla T4 (Kaggle) for TRT benchmark · A10 / L40S targets for production · CUDA 12.x |
+| Hardware | Mac M5 (MPS) for training · Tesla T4 (Kaggle) for TRT bench · L4 (GCP) for DeepStream pipeline · A10 / L40S as production targets · CUDA 12.x (Kaggle) / 13.1 (DS 9.0 container) |
 
 ## Results
 
@@ -78,8 +78,8 @@ Full benchmark methodology + reproducibility: [`benchmarks/trt-t4.md`](benchmark
 | 1   | 116.17       | 464.68      | ✅ 3.8× headroom    |
 | 2   | 116.43       | 465.72      | ✅                  |
 
-L4 vs T4 (D4): INT8 BS=1 throughput 478 → 562 qps (~1.18× speedup).
-DeepStream pipeline overhead absorbs ~44% of raw `trtexec` throughput (832 → 465
+L4 vs T4 (D4): INT8 BS=1 throughput 478 → 540 qps (~1.13× speedup).
+DeepStream pipeline overhead absorbs ~57% of raw `trtexec` throughput (808 → 465
 img/s) — within typical DS production envelope (decode + memcpy + nvinfer + osd
 + sink). KITTI dump confirms parser correctness with 9 876 metal_nut defect
 detections across the 4-stream run.
@@ -108,7 +108,8 @@ Hypothesis: INT8 quantization amplifies sensitivity to low-SNR inputs. To be mea
 │   │   └── visualize_yolo_label.py   # polygon overlay sanity check
 │   ├── train.py                      # YOLOv8s-seg fine-tune entry (recipe v1/v2/v3)
 │   ├── export_onnx.py                # ONNX export with onnxruntime verification
-│   ├── deepstream/                   # gst pipeline + config (D5-D7, in progress)
+│   ├── deepstream/
+│   │   └── models/yolov8s_seg_metal_nut/   # skill bundle: parser .cpp + Dockerfile + scripts + reports + bench logs
 │   └── isp_aug/                      # ISP-aware augmentation (D8-D9, planned)
 ├── notebooks/
 │   └── aoi-tensorrt-benchmark.ipynb  # Kaggle T4 FP32/FP16/INT8 build + benchmark
@@ -118,7 +119,7 @@ Hypothesis: INT8 quantization amplifies sensitivity to low-SNR inputs. To be mea
 │   └── metal_nut_int8.cache          # entropy calibration cache (reproducible re-build)
 ├── notes/                            # day-by-day logs, retros, hyperparameter ablation
 └── docs/
-    ├── adr/                          # 5 architecture decision records
+    ├── adr/                          # 6 architecture decision records (incl. ADR-0006 det-only deployment)
     ├── project-charter.md
     ├── risk-register.md
     └── trt_benchmark_t4.png          # latency / throughput / size bar plot
@@ -156,9 +157,31 @@ on a Kaggle notebook with T4 GPU + Internet enabled. Upload the ONNX as a Kaggle
 Dataset and the calibration data (MVTec metal_nut subset). Run cells top-to-bottom
 (~30 min total: FP32 1m + FP16 5m + INT8 8m + benchmarks).
 
-### 4. DeepStream pipeline _(D5-D7, in progress)_
+### 4. DeepStream 9.0 multi-stream pipeline (NVIDIA L4 GPU)
 
-Pending NVIDIA LaunchPad lab approval; instructions land when the pipeline is committed.
+```bash
+# scp ONNX + calibration cache + scripts to GPU host (e.g. GCP L4 VM)
+gcloud compute scp --recurse --zone us-central1-a \
+  src/deepstream/models/yolov8s_seg_metal_nut \
+  <vm>:~/ds-metal-nut
+
+# On GPU host:
+cd ~/ds-metal-nut
+docker build -t aoi-metal-nut:ds9 -f docker/Dockerfile .
+docker run --rm --gpus all \
+  -v "$PWD/model":/app/model \
+  -v "$PWD/benchmarks":/app/benchmarks \
+  -v "$PWD/samples":/app/samples \
+  -v "$PWD/sources":/app/sources \
+  -v "$PWD/reports":/app/reports \
+  -v ~/mvtec/metal_nut/test:/data/mvtec/metal_nut/test:ro \
+  aoi-metal-nut:ds9 all
+```
+
+Mac-side ffmpeg used to pre-generate 4 × 120 s test loop mp4 (DS 9.0 samples-multiarch
+container lacks `x264enc` / `openh264enc` / `/dev/v4l2-nvenc`).
+
+Skill-orchestrated via NVIDIA `deepstream-byovm` agentic skill (det-only, ADR-0006).
 
 ## Roadmap
 
@@ -175,8 +198,8 @@ Pending NVIDIA LaunchPad lab approval; instructions land when the pipeline is co
 
 ## Limitations & honest caveats
 
-- 2-week scope: 3 MVTec classes, single-stream DeepStream config. Multi-stream + multi-model orchestration is future work.
-- INT8 calibration uses MVTec train split; production deployment would require calibration on representative line data.
+- 2-week scope: 3 MVTec classes, single-model 4-stream DeepStream config. Multi-model cascaded inference (e.g. PGIE + SGIE) is future work.
+- INT8 calibration uses 335 representative MVTec metal_nut images (train/good + test/good + test/defect across 4 defect types); production deployment would require calibration on representative line data.
 - ISP-aware augmentation is parametric, not derived from real factory captures.
 
 ## Author
