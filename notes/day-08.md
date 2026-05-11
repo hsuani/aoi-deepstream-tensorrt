@@ -253,88 +253,12 @@ Day 9: per-precision mAP eval + heatmap plot + writeup. ~3-4 hr.
 ## 8. Project Tracking
 
 - Epic #7 (D8-D9 — ISP-Aware Robustness Study) currently open.
-- Will close at end of D9 with summary comment.
 - ADR-0007 hypotheses-pre-D9 captured before any eval runs (so prediction
   vs reality comparison is honest).
+- **D8 module dev + tuning time** (this note): ADR 15 min + noise.py 1.5 hr
+  (incl. tuning round 1) + exposure.py 1 hr + alignment.py 30 min + combined
+  + CLI 30 min + 12 perturbed val sets 5 min + per-perturbation visual grids
+  30 min ≈ **~3.5 hr**.
 
----
-
-## 9. Eval Results (post-execution, 2026-05-11)
-
-D8 closed with full eval matrix + per-defect breakdown. See
-[`benchmarks/robustness.md`](../benchmarks/robustness.md) for the analysis.
-
-### Aggregate mAP@50 (mask) — baseline 0.7502
-
-| Perturbation | s1 | s2 | s3 |
-|---|---|---|---|
-| noise | 0.034 (-95%) | 0.030 | 0.001 (-99.8%) |
-| exposure | 0.741 (-1%) | 0.749 | 0.733 (-2%) |
-| alignment | 0.698 (-7%) | 0.309 | 0.126 (-83%) |
-| combined | 0.018 | 0.005 | 0.000 |
-
-### Sensitivity ranking (empirical)
-
-```
-NOISE >>> ALIGNMENT > EXPOSURE
-```
-
-Predicted (ADR-0007 H1): NOISE > EXPOSURE > ALIGNMENT — **partially wrong**,
-exposure / alignment swapped.
-
-### Hypothesis verdicts
-
-- **H1** (sensitivity ranking): **partially wrong** — direction correct on
-  noise being #1 but exposure / alignment swapped, magnitude underestimated.
-- **H2** (INT8 compound): **deferred** — Mac M5 has no TRT path; needs GCP L4
-  for cross-precision verification.
-- **H3** (mild alignment within training aug): **correct** — 7.0% drop, just
-  above predicted 5% bound.
-- **H4** (combined super-linear): **inconclusive** — masked by noise dominance;
-  all combined cells track noise-alone catastrophic value.
-
-### Per-defect-type breakdown (52 sub-evals)
-
-Pivot table showed unexpected behavior per defect class:
-- **flip alignment-invariant**: 0.995 across all alignment severities.
-  Model learned rotation-equivariant features for orientation-defect class.
-- **color baseline already low** (0.396): subtle tonal anomalies are
-  fundamentally harder than geometric defects. Aggregate 0.75 dragged down
-  primarily by color.
-- **color slightly improves under exposure** (s2/s3 ~0.40 vs baseline 0.396):
-  gain push enhances tonal contrast, the dominant cue for color defects.
-- **scratch fragile to noise**: 0.712 → 0.128 at noise_s1.
-- **bent alignment cliff at s2**: 0.995 → 0.095 — combined rotation +
-  translation + anisotropic scale disrupts edge-angle cue.
-
-### Visual proof grids
-
-- `docs/robustness_grid_moderate.png`: 5 sample x 5 cell (clean + 4 perturbations at s2)
-- `docs/robustness_grid_severity.png`: 1 sample x 4x4 (noise/exposure/alignment/combined x clean/s1/s2/s3)
-
-### Key engineering insight (portfolio gold)
-
-> Production-line normal noise (SNR 30-40 dB) drops mAP from 0.75 to 0.03 (-95%).
-> Training had zero sensor-noise augmentation — any noise input is fully OOD.
-
-Mitigation path (NV-flavored): integrate this repo's `noise.apply()` (same
-linear-domain Poisson + Gaussian model used for D4 INT8 calibration) as a
-training-time augmentation transform. Calibration cache (D4) and training
-noise model (D8) share one physics, bridging quantization design with
-deployment robustness — the genuine ISP-engineering bridge story.
-
-### Time spent
-
-| Step | Duration |
-|---|---|
-| ADR-0007 hypotheses | 15 min |
-| noise.py + tune | 1.5 hr (incl. tuning round 1) |
-| exposure.py + pos/neg visualize | 1 hr |
-| alignment.py | 30 min |
-| combined helper + CLI | 30 min |
-| Generate 12 perturbed val sets | 5 min |
-| eval_robustness aggregate | 30 min code + 1 min run |
-| eval_per_defect | 30 min code + 1 min run |
-| Visual proof grids | 30 min |
-| benchmarks/robustness.md analysis | 1 hr |
-| **Total** | **~6.5 hr** |
+D9 execution (eval matrix + per-defect breakdown + hypothesis verdicts +
+outstanding list) lives in [`notes/day-09.md`](day-09.md).

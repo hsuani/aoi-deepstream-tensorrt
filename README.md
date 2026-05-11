@@ -8,9 +8,11 @@ End-to-end Automated Optical Inspection (AOI) defect detection MVP on the NVIDIA
 
 - **[GitHub Project Board](https://github.com/users/hsuani/projects/1)** — Epics, Stories, Sprint tracking
 - [Project Charter](docs/project-charter.md) — goal, scope, timeline
+- [Sprint Narrative](docs/sprint-narrative.md) — full D1-D14 walkthrough: sub-items, figures, issues + workarounds, results, discussion, extensions
+- [Sprint Checklists](docs/checklists/) — frozen per-stage plan: [stage-1](docs/checklists/stage-1.md) · [stage-2](docs/checklists/stage-2.md) · [stage-3](docs/checklists/stage-3.md) · [stage-4](docs/checklists/stage-4.md)
 - [Risk Register](docs/risk-register.md) — open / mitigated / accepted risks
-- [Architecture Decision Records](docs/adr/) — 6 ADRs covering model choice, calibration, precision selection, deployment scope
-- [Day-by-day notes](notes/) — daily logs, retros, hyperparameter ablation
+- [Architecture Decision Records](docs/adr/) — 7 ADRs covering model choice, calibration, precision selection, deployment scope, ISP-aware hypotheses
+- [Day-by-day notes](notes/) — daily logs (D2 / D4 / D5 / D6 / D7 / D8 / D9), retros, hyperparameter ablation
 
 ## Why this project
 
@@ -20,27 +22,39 @@ This repo benchmarks an AOI pipeline twice: once on the canonical MVTec AD test 
 
 ## Architecture
 
+PNG: [`docs/architecture.png`](docs/architecture.png) (source: [`docs/architecture.dot`](docs/architecture.dot))
+
 ```
-                  +-------------------+        +------------------+
-   MVTec AD --->  |  PyTorch training |  --->  |  ONNX (opset 17) |
-                  |  (YOLOv8-seg +    |        +------------------+
-                  |   EfficientAD)    |                 |
-                  +-------------------+                 v
-                                              +------------------+
-                                              | TensorRT engine  |
-                                              | FP32 / FP16 /    |
-                                              | INT8 (entropy)   |
-                                              +------------------+
-                                                       |
-                                                       v
-            +-------------------------------------------------------------+
-            |  DeepStream 9.0 pipeline (Python)                           |
-            |  uridecodebin -> nvstreammux -> nvinfer -> nvdsosd -> sink  |
-            +-------------------------------------------------------------+
-                                                       |
-                                                       v
-                                          Annotated mock factory stream
+                  +-------------------+        +-------------------+
+   MVTec AD --->  |  PyTorch training |  --->  |  ONNX (opset 17)  |
+       |          |  (YOLOv8s-seg)    |        +-------------------+
+       |          +-------------------+                  |
+       |                                                 v
+       |  val split                             +-------------------+
+       |  (49 imgs, 4 defect types)             | TensorRT engine   |
+       |                                        | FP32 / FP16 /     |
+       v                                        | INT8 (entropy)    |
++----------------------+                        +-------------------+
+| ISP-aware aug (D8)   |                                 |
+|  - noise   (Poi+G)   |                +----------------+----------------+
+|  - exposure (EV+WB+γ)|                v                                 v
+|  - alignment (R+T+S) |    +-----------------------+      +-----------------------+
++----------------------+    | DeepStream 9.0        |      | onnxruntime / val.py  |
+       |                    | uridecodebin →        |      | per-precision mAP     |
+       v                    | nvstreammux →         |      | (× 13 perturbed cells)|
++----------------------+    | nvinfer → nvdsosd →   |      +-----------------------+
+| 13 perturbed val     |    | sink                  |                  |
+| cells (3×3 + 3 comb) |    +-----------------------+                  v
++----------------------+              |                       +-----------------------+
+       |                              v                       | Robustness matrix     |
+       +----------------------+ Annotated mock                | mAP@50, per-defect    |
+                                factory stream                +-----------------------+
+                                (L4 INT8, 465 img/s)
 ```
+
+Top-down: training → deploy (right branch, D5-D7). val branch (left, D8-D9) feeds
+the same `.pt` model into the ISP-aware perturbation pipeline → robustness eval.
+Same model weights, two inference paths; bridge is `src/isp_aug/` (D8 module).
 
 ## Stack
 
@@ -123,6 +137,15 @@ re-gamma):
 (predicted in [ADR-0007](docs/adr/0007-isp-aware-perturbation-hypotheses.md) was
 NOISE > EXPOSURE > ALIGNMENT — partially wrong, exposure/alignment swapped).
 
+**Hypothesis verdicts** (pre-stated in ADR-0007 before any eval ran):
+
+| # | Hypothesis | Verdict |
+|---|---|---|
+| H1 | NOISE > EXPOSURE > ALIGNMENT | **PARTIALLY WRONG** — direction kept on NOISE first; exposure / alignment swapped; magnitude wildly underestimated |
+| H2 | INT8 compounds noise disproportionately vs FP16 | **DEFERRED** — Mac M5 has no TRT path; cross-precision eval needs L4 re-deploy |
+| H3 | Mild alignment within training-aug envelope (< 5% drop) | **CORRECT (within tolerance)** — 7.0% drop, just above predicted bound |
+| H4 | Combined-apply super-linear vs sum-of-individuals | **INCONCLUSIVE** — masked by noise dominance |
+
 **Top finding**: production-line normal noise (SNR 30-40 dB) collapses mAP
 from 0.75 → 0.03 (-95%). Training had zero sensor-noise augmentation →
 any noise input is fully OOD. Mitigation path: integrate `noise.apply()`
@@ -130,6 +153,27 @@ any noise input is fully OOD. Mitigation path: integrate `noise.apply()`
 as a training-time augmentation transform — calibration cache and training
 noise model share one physics, bridging quantization design with
 deployment robustness.
+
+**Engineering implications**:
+
+1. **Noise augmentation MUST be added to training** — the single biggest
+   gap; without it the model is not deployment-ready. Cheap fix:
+   `albumentations.GaussNoise`. Proper fix (NV-flavored): integrate the
+   same physical noise model used for INT8 calibration as a training
+   transform — shared physics across calibration and training.
+2. **HSV-domain training augmentation is over-sufficient for exposure**
+   — `hsv_v=0.4` + mosaic scale variance absorbs ±2 EV + WB drift with
+   only ~2% mAP loss. Industrial AOI does not need elaborate
+   exposure-domain compensation pipelines if HSV jitter is generous.
+3. **Alignment surprise risk: combined > sum-of-axes** — single-axis
+   rotation up to ±10° is covered by training (`degrees=10`). But
+   *combined* rotation + translation + anisotropic scale at s2 (each
+   axis within training range alone) breaks the model (-59%). Stacked
+   fixture drifts in production can fail an otherwise robust pipeline.
+4. **Noise dominates "compound effect" engineering** — without
+   noise-augmented training, sensor noise is the rate-limiting factor.
+   "First OOD axis" engineering matters more than "compound effect"
+   engineering in this regime.
 
 **Visual proof**:
 - ![Robustness moderate](docs/robustness_grid_moderate.png)
@@ -141,18 +185,28 @@ deployment robustness.
 - [Severity progression on `scratch_007`](docs/robustness_grid_severity.png)
   shows per-perturbation degradation across s1/s2/s3.
 
-**Per-defect insights**: see
-[`benchmarks/robustness.md`](benchmarks/robustness.md) §6 +
-[`benchmarks/robustness_per_defect.csv`](benchmarks/robustness_per_defect.csv).
-- `flip` is **alignment-invariant** (mAP 0.995 across all alignment
-  severities) — model learned rotation-equivariant features for
-  orientation-defect class.
-- `color` baseline is the bottleneck (0.396), but **slightly improves**
-  under moderate/severe exposure (gain push enhances tonal contrast cue).
-- `scratch + noise` is the most fragile pairing (high-frequency cue drowns
-  in additive noise).
+**Per-defect insights** (52 sub-evals, [`benchmarks/robustness_per_defect.csv`](benchmarks/robustness_per_defect.csv)):
 
-Full methodology: [`benchmarks/robustness.md`](benchmarks/robustness.md).
+- `flip` is **alignment-invariant** (mAP 0.995 across all alignment
+  severities) — model learned rotation-equivariant features for the
+  orientation-anomaly defect class.
+- `color` baseline is the bottleneck (0.396), but **slightly improves**
+  under moderate/severe exposure (gain push enhances tonal contrast, the
+  dominant cue for color defects).
+- `scratch + noise` is the most fragile pairing (0.712 → 0.128 at noise_s1)
+  — high-frequency cue drowns in additive noise first.
+- `bent` has an alignment cliff at s2 (0.995 → 0.095) — combined rotation
+  + translation + scale disrupts the edge-angle cue without entering
+  training-aug range alone.
+
+**Honest caveats** (full discussion in [`benchmarks/robustness.md`](benchmarks/robustness.md) §4):
+single precision only (FP32 PyTorch on Mac; H2 unverified); ground-truth
+polygons not transformed under alignment (matches deployment scenario but
+conflates model-robustness with label-image misalignment); single seed per
+cell (±1-3% mAP variance expected on reseed).
+
+Full methodology + analysis: [`benchmarks/robustness.md`](benchmarks/robustness.md) ·
+execution log + outstanding D9 items: [`notes/day-09.md`](notes/day-09.md).
 
 ## Repo layout
 
@@ -241,17 +295,58 @@ Skill-orchestrated via NVIDIA `deepstream-byovm` agentic skill (det-only, ADR-00
 
 ## Roadmap
 
-- [x] **D1** — Repo skeleton, MVTec → YOLO converter, dev environment
-- [x] **D2** — MVTec AD baseline (3 classes; metal_nut mAP@50 0.75; transistor / cable cross-class study)
-- [x] **D3** — ONNX export with dynamic batch + onnxruntime verification
-- [x] **D4** — TensorRT FP32 / FP16 / INT8 build + benchmark on Tesla T4 (5.22× INT8 speedup)
-- [x] **D5** — GCP L4 VM + NGC DeepStream 9.0 environment (driver 590, Ubuntu 24.04, NV stack alive)
-- [x] **D6** — `deepstream-byovm` skill autonomous mode generated end-to-end pipeline scaffolding (det-only path per ADR-0006)
-- [x] **D7** — DS 9.0 multi-stream pipeline on L4 (4 streams × 116 fps = 465 img/s aggregate, INT8); skill-orchestrated; PDF benchmark report committed
-- [x] **D8** — ISP-aware robustness study (3 perturbation modules + combined-apply, 13-cell mAP matrix + per-defect breakdown; ADR-0007 hypothesis verdicts)
-- [ ] **D9** — Heatmap viz + per-precision INT8/FP16 cross-check (deferred to GCP L4 v2)
-- [ ] **D10-D14** — Documentation polish, blog post, NVIDIA Inception application
-- [ ] _Stretch_ — EfficientAD secondary baseline; Jetson Orin Nano deployment
+Two-week sprint, four stages. Each stage has a frozen plan in
+[`docs/checklists/`](docs/checklists/) and an annotated deep-dive in
+[`docs/sprint-narrative.md`](docs/sprint-narrative.md).
+
+Legend: ✅ done · 🟡 partial / deferred · ⏳ pending · ➖ dropped
+
+### Stage 1 — D1-D4: Repo + Baseline + TRT Engines ✅
+
+Resume submission unlocked from D1 onwards. Plan: [stage-1](docs/checklists/stage-1.md) · narrative: [Stage 1](docs/sprint-narrative.md#stage-1--d1-d4-repo-visible--baseline)
+
+- ✅ **D1** — Repo skeleton + LICENSE (MIT) + `.gitignore`
+- ✅ **D2** — MVTec AD 3-class baseline (transistor / cable / metal_nut); metal_nut mAP@50(M) **0.75**; cross-class study + 3-recipe ablation
+- ✅ **D3** — ONNX export (opset 17, dynamic batch) + `onnx.checker` + onnxruntime sanity
+- ✅ **D4** — TRT FP32 / FP16 / INT8 on Kaggle T4; entropy calibration (335 imgs); INT8 **5.22×** speedup (10.91 → 2.09 ms); functional drift FP16 < 0.001%, INT8 8.62%
+- ➖ EfficientAD secondary baseline → stretch (see Extensions)
+
+### Stage 2 — D5-D7: DeepStream Pipeline + Demo ✅
+
+Plan: [stage-2](docs/checklists/stage-2.md) · narrative: [Stage 2](docs/sprint-narrative.md#stage-2--d5-d7-deepstream-pipeline--demo)
+
+- ✅ **D5** — GCP L4 VM (g2-standard-8, Spot, driver 590, Ubuntu 24.04); DS 9.0 `samples-multiarch` container alive
+- ✅ **D6** — `deepstream-byovm` skill autonomous mode generates end-to-end pipeline; det-only path per [ADR-0006](docs/adr/0006-detection-only-deployment.md); custom nvinfer bbox parser
+- ✅ **D7** — Multi-stream bench (4 streams × 116 fps = **465 img/s aggregate** INT8) + KITTI dump parser correctness (9876 dets) + 28-sec demo video + PDF benchmark report; L4 vs T4 INT8 BS=1: 478 → 540 qps (1.13×)
+
+### Stage 3 — D8-D10: ISP-aware Robustness + Polish 🟡
+
+Plan: [stage-3](docs/checklists/stage-3.md) · narrative: [Stage 3](docs/sprint-narrative.md#stage-3--d8-d10-isp-aware-differentiation--polish)
+
+- ✅ **D8** — 3 perturbation modules (noise · exposure · alignment, linear-domain physics) + combined-apply + CLI + 12 perturbed val cells; tune round 1 maps s1 to production-line normal (SNR 30-40 dB); [ADR-0007](docs/adr/0007-isp-aware-perturbation-hypotheses.md) hypotheses captured pre-eval
+- 🟡 **D9** — 13-cell mAP matrix + per-defect breakdown (52 sub-evals) + hypothesis verdicts (H1 partially wrong, H3 correct, H2 deferred, H4 inconclusive); details: [day-09.md](notes/day-09.md). **Outstanding**: cross-precision FP32/FP16/INT8 matrix on L4 (O1), aggregated heatmap PNG (O2), label-transform-aware cells (O3), noise-augmented retrain (O4)
+- 🟡 **D10** — README v2 + architecture diagram + ADR-0007 ✅; type hints / docstring / Makefile / pinned requirements / CI ⏳
+
+### Stage 4 — D11-D14: Marketing + Submit ⏳
+
+Plan: [stage-4](docs/checklists/stage-4.md) · narrative: [Stage 4](docs/sprint-narrative.md#stage-4--d11-d14-marketing--submit-)
+
+- ⏳ **D11** — Blog draft "From Smartphone ISP to Factory AOI"
+- ⏳ **D12** — NVIDIA Inception application + portfolio site + LinkedIn Skills
+- ⏳ **D13** — Repo private → public + LinkedIn launch post + blog publish
+- ⏳ **D14** — Resume v13 + cover letter v8 + Metropolis (Manufacturing) submission + InMails
+
+### Extensions / Stretch (post-sprint)
+
+Ordered by NV-Metropolis fit. Full discussion: [sprint-narrative §Extensions](docs/sprint-narrative.md#extensions--open-questions).
+
+1. Cross-precision robustness matrix on L4 (D9 O1) — verify H2
+2. Noise-augmented retrain (D9 O4) — demonstrate mitigation
+3. Path B: custom YOLOv8-seg parser — instance-mask recovery in DS
+4. EfficientAD secondary baseline — unsupervised anomaly AUC angle
+5. Jetson Orin Nano deployment — edge-tier portability
+6. Cable / transistor robustness via same ISP aug
+7. Multi-model cascaded inference (PGIE + SGIE)
 
 ## Limitations & honest caveats
 

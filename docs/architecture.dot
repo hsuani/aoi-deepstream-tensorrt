@@ -1,0 +1,80 @@
+// AOI defect detection — end-to-end architecture
+// Render: dot -Tpng docs/architecture.dot -o docs/architecture.png
+//
+// Two inference paths share the same trained .pt model:
+//   right branch  = D5-D7 deploy (DeepStream 9.0, INT8 TRT engine on L4)
+//   left  branch  = D8-D9 ISP-aware robustness eval (perturbed val cells)
+
+digraph aoi_arch {
+  rankdir=TB;
+  graph [
+    fontname="Helvetica",
+    fontsize=12,
+    splines=true,
+    nodesep=0.5,
+    ranksep=0.7,
+    bgcolor="white",
+    label="AOI defect detection — PyTorch → ONNX → TRT → DeepStream\nwith ISP-aware robustness branch (D8-D9)",
+    labelloc="t",
+    labeljust="c",
+  ];
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=11,
+    color="#333333",
+    margin="0.18,0.10",
+  ];
+  edge [
+    fontname="Helvetica",
+    fontsize=9,
+    color="#555555",
+  ];
+
+  // ─── inputs ──────────────────────────────────────────────────────────
+  mvtec        [label="MVTec AD\n(transistor / cable / metal_nut)",
+                fillcolor="#fff7e0"];
+
+  // ─── training (D2) ───────────────────────────────────────────────────
+  train        [label="PyTorch training (D2)\nYOLOv8s-seg, MPS\nrecipe v1",
+                fillcolor="#e6f0ff"];
+  model_pt     [label=".pt checkpoint\nmAP@50 mask 0.75 (metal_nut)",
+                fillcolor="#e6f0ff"];
+
+  // ─── export + engine (D3-D4) ─────────────────────────────────────────
+  onnx         [label="ONNX (D3)\nopset 17, dynamic batch",
+                fillcolor="#e6f5e6"];
+  trt_engine   [label="TensorRT engine (D4)\nFP32 / FP16 / INT8\nentropy calibration (335 imgs)",
+                fillcolor="#e6f5e6"];
+
+  // ─── deploy branch (D5-D7) ───────────────────────────────────────────
+  ds_pipe      [label="DeepStream 9.0 (D5-D7)\nuridecodebin → nvstreammux\n→ nvinfer → nvdsosd → sink",
+                fillcolor="#d8e8ff"];
+  ds_out       [label="Annotated mock factory stream\nL4 INT8 · 465 img/s aggregate (4 streams)",
+                fillcolor="#d8e8ff"];
+
+  // ─── ISP aug branch (D8-D9) ──────────────────────────────────────────
+  isp_aug      [label="ISP-aware aug (D8)\nnoise · exposure · alignment\nlinear-domain physics",
+                fillcolor="#fde6f0"];
+  perturb_val  [label="13 perturbed val cells\n(3 × 3 individual + 3 combined)\nseed 42",
+                fillcolor="#fde6f0"];
+  rob_eval     [label="onnxruntime / model.val()\nper-precision mAP eval",
+                fillcolor="#fde6f0"];
+  rob_matrix   [label="Robustness matrix\nmAP@50 (mask), per defect type",
+                fillcolor="#fde6f0"];
+
+  // ─── flow ────────────────────────────────────────────────────────────
+  mvtec        -> train          [label="train split"];
+  mvtec        -> perturb_val    [label="val split\n(49 imgs)", style=dashed];
+  train        -> model_pt;
+  model_pt     -> onnx;
+  onnx         -> trt_engine;
+  trt_engine   -> ds_pipe;
+  ds_pipe      -> ds_out;
+
+  model_pt     -> rob_eval       [label="weights", style=dashed];
+  isp_aug      -> perturb_val    [label="apply"];
+  perturb_val  -> rob_eval;
+  rob_eval     -> rob_matrix;
+}
