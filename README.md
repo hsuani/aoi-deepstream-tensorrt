@@ -218,13 +218,106 @@ deployment robustness.
   training-aug range alone.
 
 **Honest caveats** (full discussion in [`benchmarks/robustness.md`](benchmarks/robustness.md) §4):
-single precision only (FP32 PyTorch on Mac; H2 unverified); ground-truth
-polygons not transformed under alignment (matches deployment scenario but
-conflates model-robustness with label-image misalignment); single seed per
-cell (±1-3% mAP variance expected on reseed).
+FP32 + FP16 covered on L4 (TRT 10.14, 2026-05-12); INT8 deferred per
+[ADR-0008](docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md) (TRT 10.14
+tactic gap for YOLOv8-seg proto fusion); ground-truth polygons not
+transformed under alignment (matches deployment scenario but conflates
+model-robustness with label-image misalignment); single seed per cell
+(±1-3% mAP variance expected on reseed); Mac PyTorch vs L4 TRT-engine
+post-process drift (noise_s1 cell 2×) flagged for follow-up bisect — Mac
+path is a lower-bound iteration surface.
 
 Full methodology + analysis: [`benchmarks/robustness.md`](benchmarks/robustness.md) ·
 execution log + outstanding D9 items: [`notes/day-09.md`](notes/day-09.md).
+
+## How This Project Was Run (TPM View)
+
+A two-week sprint with one engineer hits its targets only if the
+execution discipline is clear from the artifact alone. This section is
+the run-of-show: the explicit decision-making framework, the risk
+posture, and the project-management surface a TPM would inspect.
+
+### Decision-making via Architecture Decision Records
+
+Every load-bearing technical choice is captured as a short ADR (problem
+context → options considered → decision → consequences) committed
+*before or alongside* the implementation. ADRs make trade-offs
+inspectable and reversible later without git-archaeology.
+
+Eight ADRs across the sprint:
+
+| ADR | Topic | Why it mattered |
+|---|---|---|
+| [0001](docs/adr/0001-yolov8s-seg-as-baseline.md) | YOLOv8s-seg as baseline | Picks a model family with strong industrial-CV mindshare; ruled out heavier YOLOv8m/l (training budget) and EfficientAD (anomaly-detection, different paradigm) |
+| [0002](docs/adr/0002-binary-vs-multiclass.md) | Binary defect vs multi-class | One-class supervised seg vs N-way classification; chose binary to align with AOI line PASS/FAIL |
+| [0003](docs/adr/0003-metal-nut-as-primary-d3-model.md) | metal_nut as the D3+ primary | After D2 cross-class study, metal_nut's 0.75 mAP was the only one passing portfolio-publishable bar |
+| [0004](docs/adr/0004-entropy-calibration-over-minmax.md) | Entropy over min-max INT8 calibration | Entropy calibrator handles outlier activation tails better — directly relevant to ISP-noisy inputs |
+| [0005](docs/adr/0005-fp16-as-production-precision.md) | FP16 as production precision | Latency win (D4) + robustness parity verified (D9) — promoted from "fallback for INT8 risk" to "primary deploy precision" |
+| [0006](docs/adr/0006-detection-only-deployment.md) | Detection-only DeepStream path | Det-only ships on schedule; mask recovery is QA-time luxury not real-time gate |
+| [0007](docs/adr/0007-isp-aware-perturbation-hypotheses.md) | Pre-registered ISP perturbation hypotheses | 4 hypotheses committed *before* eval; verdicts published honest including misses (H1 partially wrong) |
+| [0008](docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md) | TRT 10.14 INT8 tactic gap | Documents what's blocked + 3 forward paths (wait / QAT / strip seg head); no hidden failure |
+
+ADR-0007's pre-registration is the discipline I'd flag to a TPM reviewer:
+the four-hypothesis table existed in the repo before any robustness eval
+ran. Two of the four turned out wrong. Owning that gap publicly beats
+post-hoc rationalising the results that did show up.
+
+### GitHub Projects board
+
+Sprint epics, stories, and risk views live on
+[`hsuani/projects/1`](https://github.com/users/hsuani/projects/1). Eight
+epics (one per stage gate), each linked to commits via `Closes #N`
+trailers. Risk view ([view 4](https://github.com/users/hsuani/projects/1/views/4))
+mirrors [`docs/risk-register.md`](docs/risk-register.md) and is the
+single source for likelihood / impact / mitigation status.
+
+> Project-board screenshot embedded once the board view stabilises after
+> Stage 3 exit; live link above is the canonical view.
+
+### Risk log — INT8 precision loss, worked example
+
+R-3 from the [risk register](docs/risk-register.md): *"INT8 mAP degrades
+> 10% on real defects."* This was the largest pre-sprint technical risk
+(INT8 promises 5× speedup but can tank accuracy on out-of-distribution
+inputs). The mitigation timeline:
+
+1. **Pre-sprint (D0)** — risk logged with FP16 named as fallback if INT8
+   accuracy degraded > 10%. ADR-0005 staged the fallback path upfront so
+   no last-minute panic.
+2. **D4 (Kaggle T4)** — INT8 build + entropy calibration completed; functional
+   drift quantified at 8.6% on output mean (FP16 < 0.001%). Within the
+   < 10% threshold for the clean-baseline cell, so risk de-escalated to
+   "mitigated" rather than "realised". Latency table published with INT8
+   numbers, but ADR-0005 already documented FP16 as the headline
+   production precision.
+3. **D8-D9 round 1** — ISP-aware robustness study introduced 13
+   perturbation cells. INT8 robustness deferred (Mac M5 had no TRT path);
+   ADR-0007 captured this as the H2 hypothesis (INT8 compounds noise
+   disproportionately) with explicit pre-eval prediction.
+4. **D9 round 2 (L4 cross-precision)** — re-spun GCP L4 from D7 snapshot,
+   re-ran the 13-cell matrix on FP32 + FP16 engines. **FP16 inherited
+   FP32 fully** (max drift 0.0005 mAP). The INT8 engine build hit a TRT
+   10.14 tactic-coverage gap for the YOLOv8-seg proto Conv+Sigmoid+Mul
+   fusion. ADR-0008 captured the diagnosis + three forward paths (wait
+   for TRT future-version tactic, migrate to QAT, or strip seg head for
+   INT8 path).
+5. **Net outcome** — FP16 promoted from "INT8-risk fallback" to "verified
+   production precision". INT8 stays an open question, but the gap is
+   *scoped + documented + linked to a follow-up path*, not buried.
+
+This is the kind of risk lifecycle a TPM inspects: was the risk surfaced
+early, did it have a named mitigation before realised cost was incurred,
+and when reality differed from prediction was the delta documented
+clearly enough to act on next? All three answer yes in the artifact.
+
+### Sprint cadence
+
+Stage gates frozen in [`docs/checklists/`](docs/checklists/) (4 stage
+files, one per phase boundary); per-day execution narrative in
+[`notes/day-NN.md`](notes/); engineering deep-dive companion in
+[`docs/sprint-narrative.md`](docs/sprint-narrative.md). Recruiter-facing
+README is intentionally a thin overview layer — each numbered table or
+verdict above traces back to one of those deeper artifacts.
 
 ## Repo layout
 
