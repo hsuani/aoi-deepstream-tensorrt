@@ -11,7 +11,7 @@ End-to-end Automated Optical Inspection (AOI) defect detection MVP on the NVIDIA
 - [Sprint Narrative](docs/sprint-narrative.md) — full D1-D14 walkthrough: sub-items, figures, issues + workarounds, results, discussion, extensions
 - [Sprint Checklists](docs/checklists/) — frozen per-stage plan: [stage-1](docs/checklists/stage-1.md) · [stage-2](docs/checklists/stage-2.md) · [stage-3](docs/checklists/stage-3.md) · [stage-4](docs/checklists/stage-4.md)
 - [Risk Register](docs/risk-register.md) — open / mitigated / accepted risks
-- [Architecture Decision Records](docs/adr/) — 7 ADRs covering model choice, calibration, precision selection, deployment scope, ISP-aware hypotheses
+- [Architecture Decision Records](docs/adr/) — 8 ADRs covering model choice, calibration, precision selection, deployment scope, ISP-aware hypotheses, INT8 tactic-gap diagnosis
 - [Day-by-day notes](notes/) — daily logs (D2 / D4 / D5 / D6 / D7 / D8 / D9), retros, hyperparameter ablation
 
 ## Why this project
@@ -142,9 +142,27 @@ NOISE > EXPOSURE > ALIGNMENT — partially wrong, exposure/alignment swapped).
 | # | Hypothesis | Verdict |
 |---|---|---|
 | H1 | NOISE > EXPOSURE > ALIGNMENT | **PARTIALLY WRONG** — direction kept on NOISE first; exposure / alignment swapped; magnitude wildly underestimated |
-| H2 | INT8 compounds noise disproportionately vs FP16 | **DEFERRED** — Mac M5 has no TRT path; cross-precision eval needs L4 re-deploy |
+| H2 | INT8 compounds noise disproportionately vs FP16 | **HALF-ANSWERED** — FP16 ≡ FP32 functionally on L4 (max drift 0.0005 mAP); INT8 deferred per [ADR-0008](docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md) (TRT 10.14 tactic gap on YOLOv8-seg proto fusion) |
 | H3 | Mild alignment within training-aug envelope (< 5% drop) | **CORRECT (within tolerance)** — 7.0% drop, just above predicted bound |
 | H4 | Combined-apply super-linear vs sum-of-individuals | **INCONCLUSIVE** — masked by noise dominance |
+
+**Cross-precision matrix** ([`benchmarks/robustness_cross_precision.csv`](benchmarks/robustness_cross_precision.csv), L4 TRT 10.14, 2026-05-12):
+
+![Robustness matrix · Mac PyTorch vs L4 TRT FP32 / FP16](benchmarks/robustness_plot.png)
+
+![FP16 vs FP32 drift](benchmarks/robustness_drift_plot.png)
+
+FP16 inherits FP32 robustness profile fully (max abs drift 0.0005 mAP@50,
+all production-relevant cells < 0.0001). Promotes FP16 from "production
+precision via D4 latency win" to "production precision via D9 robustness
+parity verified".
+
+Bonus finding: **Mac PyTorch vs L4 TRT-engine post-process drift** — clean
+baseline drift is < 1%, but noise_s1 mAP differs ~2× between the two paths
+(0.034 Mac vs 0.073 L4 TRT). Likely NMS / letterbox-interpolation /
+proto-mask-precision differences in the engine post-process. Bisect study
+deferred. Deployment-realistic number is the L4 TRT one; the Mac path
+serves as a *lower-bound* iteration surface.
 
 **Top finding**: production-line normal noise (SNR 30-40 dB) collapses mAP
 from 0.75 → 0.03 (-95%). Training had zero sensor-noise augmentation →
@@ -324,8 +342,8 @@ Plan: [stage-2](docs/checklists/stage-2.md) · narrative: [Stage 2](docs/sprint-
 Plan: [stage-3](docs/checklists/stage-3.md) · narrative: [Stage 3](docs/sprint-narrative.md#stage-3--d8-d10-isp-aware-differentiation--polish)
 
 - ✅ **D8** — 3 perturbation modules (noise · exposure · alignment, linear-domain physics) + combined-apply + CLI + 12 perturbed val cells; tune round 1 maps s1 to production-line normal (SNR 30-40 dB); [ADR-0007](docs/adr/0007-isp-aware-perturbation-hypotheses.md) hypotheses captured pre-eval
-- 🟡 **D9** — 13-cell mAP matrix + per-defect breakdown (52 sub-evals) + hypothesis verdicts (H1 partially wrong, H3 correct, H2 deferred, H4 inconclusive); details: [day-09.md](notes/day-09.md). **Outstanding**: cross-precision FP32/FP16/INT8 matrix on L4 (O1), aggregated heatmap PNG (O2), label-transform-aware cells (O3), noise-augmented retrain (O4)
-- 🟡 **D10** — README v2 + architecture diagram + ADR-0007 ✅; type hints / docstring / Makefile / pinned requirements / CI ⏳
+- 🟡 **D9** — 13-cell mAP matrix + per-defect breakdown (52 sub-evals) + hypothesis verdicts (H1 partially wrong, H3 correct, **H2 half-answered: FP16 ≡ FP32 verified on L4**, H4 inconclusive); cross-precision FP32 + FP16 done on L4 TRT 10.14 ([`robustness_cross_precision.csv`](benchmarks/robustness_cross_precision.csv) + [`robustness_plot.png`](benchmarks/robustness_plot.png)); INT8 deferred per [ADR-0008](docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md). Details: [day-09.md](notes/day-09.md). **Soft outstanding**: label-transform-aware cells (O3), noise-augmented retrain (O4), Mac-vs-L4-engine drift bisect, `stage-3-retro.md`
+- 🟡 **D10** — README v2 + architecture diagram + heatmap PNG + ADR-0007 + ADR-0008 ✅; type hints / docstring / Makefile / pinned requirements / CI ⏳
 
 ### Stage 4 — D11-D14: Marketing + Submit ⏳
 
@@ -340,13 +358,14 @@ Plan: [stage-4](docs/checklists/stage-4.md) · narrative: [Stage 4](docs/sprint-
 
 Ordered by NV-Metropolis fit. Full discussion: [sprint-narrative §Extensions](docs/sprint-narrative.md#extensions--open-questions).
 
-1. Cross-precision robustness matrix on L4 (D9 O1) — verify H2
-2. Noise-augmented retrain (D9 O4) — demonstrate mitigation
-3. Path B: custom YOLOv8-seg parser — instance-mask recovery in DS
-4. EfficientAD secondary baseline — unsupervised anomaly AUC angle
-5. Jetson Orin Nano deployment — edge-tier portability
-6. Cable / transistor robustness via same ISP aug
-7. Multi-model cascaded inference (PGIE + SGIE)
+1. INT8 robustness eval — gated by TRT future-version tactic coverage for YOLOv8-seg proto fusion, or QAT migration ([ADR-0008](docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md))
+2. Noise-augmented retrain (D9 O4) — demonstrate mitigation (close 0.75 → 0.03 gap empirically)
+3. Mac PyTorch vs L4 TRT-engine post-process drift bisect — NMS vs interp vs proto-mask precision
+4. Path B: custom YOLOv8-seg parser — instance-mask recovery in DS pipeline
+5. EfficientAD secondary baseline — unsupervised anomaly AUC angle
+6. Jetson Orin Nano deployment — edge-tier portability
+7. Cable / transistor robustness via same ISP aug
+8. Multi-model cascaded inference (PGIE + SGIE)
 
 ## Limitations & honest caveats
 

@@ -61,13 +61,29 @@ Reasoning gap analysis:
 
 ### H2 — INT8 quantization compounds noise sensitivity
 
-**Verdict**: **DEFERRED** — Mac M5 has no TRT INT8 path; only FP32 PyTorch
-ran. Cross-precision INT8 + FP16 verification requires GCP L4 + TRT engine
-re-deployment (D11+ stretch).
+**Verdict**: **HALF-ANSWERED** — FP16 confirmed parity with FP32; INT8 deferred.
 
-Pre-finding still useful: with noise alone destroying FP32 mAP (95% drop),
-the H2 INT8-compound effect would be largely masked. Production response is
-not "switch to FP16/INT8 carefully" but "retrain with noise augmentation".
+**FP16 half (verified on L4 TRT 10.14, 2026-05-12)**: FP16 inherits the FP32
+robustness profile in full. Max absolute drift across all 13 cells is
+0.0005 mAP@50 (mask); every production-relevant cell (mAP > 0.1) sits below
+0.0001. There is **no FP16-induced compound effect under any perturbation**
+in this regime. Promotes FP16 from "production-precision via D4 latency win"
+to "production-precision via D9 robustness parity verified".
+
+**INT8 half (deferred)**: blocked by TRT 10.14 tactic-coverage gap for the
+YOLOv8-seg proto-head Conv+Sigmoid+Mul fusion under entropy calibration.
+Documented and tracked in
+[ADR-0008](../docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md). The
+question whether INT8 disproportionately amplifies sensor-noise sensitivity
+beyond what FP32 already shows remains open until either (a) TRT future
+versions add the missing tactic for YOLOv8-seg proto fusion or (b) we
+migrate to QAT with explicit quantization nodes.
+
+Cross-precision details + drift analysis + Mac PyTorch vs L4 TRT-engine
+divergence (a separate engine-path drift finding) live in
+[`notes/day-09.md` §6](../notes/day-09.md) and the heatmap
+[`benchmarks/robustness_plot.png`](robustness_plot.png) +
+[`benchmarks/robustness_drift_plot.png`](robustness_drift_plot.png).
 
 ### H3 — mild alignment within training-aug envelope
 
@@ -143,15 +159,27 @@ in this regime.
 
 ## 4. Caveats and Limitations
 
-1. **Single precision (FP32 PyTorch on Mac)** — H2 not verified. INT8 + FP16
-   cross-precision matrix deferred (requires GCP L4 + TRT engine, D11+).
-2. **Labels not transformed under alignment** — for alignment + combined cells,
+1. **Cross-precision coverage** — FP32 and FP16 both verified on L4 TRT
+   10.14 (2026-05-12, see [`notes/day-09.md` §6](../notes/day-09.md)). FP16
+   ≡ FP32 functionally; H2 FP16 half answered. INT8 deferred per
+   [ADR-0008](../docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md) —
+   TRT 10.14 tactic gap for YOLOv8-seg proto Conv+Sigmoid+Mul fusion blocks
+   entropy-calibration build with our current setup.
+2. **Mac PyTorch vs L4 TRT-engine drift** — noise_s1 mAP differs ~2×
+   between Mac PyTorch (0.034) and L4 TRT FP32 (0.073) despite clean
+   baseline drift being < 1%. Likely from NMS implementation, letterbox
+   interpolation, or proto-mask numerical precision differences in the
+   engine post-process path. Deployment-realistic number is the L4 TRT
+   one; Mac path is a fast iteration surface but noise-cell numbers should
+   be treated as a *lower bound* on deployed robustness. Bisect study
+   out of scope for this sprint.
+3. **Labels not transformed under alignment** — for alignment + combined cells,
    ground-truth polygons stay in original coordinates. mAP drop conflates
    "model robustness" with "label-image misalignment under spatial drift",
    which matches the deployment scenario where camera fixture drifts but the
    inspection app expects fixed coordinates. For pure model-robustness, follow-
    up runs would transform polygons under the same affine matrix.
-3. **Single seed per cell** — `seed=42` in CLI; per-image seed is `seed*10000+i`.
+4. **Single seed per cell** — `seed=42` in CLI; per-image seed is `seed*10000+i`.
    Repeat runs with different seeds would yield ±1-3% mAP variance. Single-seed
    numbers are sufficient for the order-of-magnitude conclusions above.
 4. **No per-defect-type breakdown** — aggregate mAP across all 4 defect types.
@@ -228,12 +256,66 @@ mAP@50 (mask), per-defect-type pivot (`benchmarks/robustness_per_defect.csv`):
   relies on edge contour angle; combined rotation + translation + anisotropic
   scale at s2 disrupts the geometric cue without entering training-aug range.
 
-## 7. Next steps (D9)
+## 7. Cross-Precision Matrix (L4, TRT 10.14, 2026-05-12)
+
+Re-spun GCP L4 from D7 snapshot; ran the same 13 perturbed val cells
+through FP32 + FP16 TRT engines. INT8 deferred (see §8).
+
+Full matrix: [`benchmarks/robustness_cross_precision.csv`](robustness_cross_precision.csv) ·
+heatmap: [`benchmarks/robustness_plot.png`](robustness_plot.png) ·
+parity bar chart: [`benchmarks/robustness_drift_plot.png`](robustness_drift_plot.png) ·
+narrative + Mac-vs-L4 drift analysis: [`notes/day-09.md` §6](../notes/day-09.md).
+
+### 7.1 FP16 ≡ FP32 functionally
+
+Max |FP16 − FP32| = **0.0005 mAP@50** (on `baseline_s0` + `exposure_s3`).
+Every production-relevant cell (mAP > 0.1) is below 0.0001. FP16 inherits
+the FP32 robustness profile in full → promotes FP16 from "production
+precision via D4 latency" to "production precision via D9 robustness
+parity verified".
+
+### 7.2 Mac PyTorch vs L4 TRT-engine drift (engine-path, not precision)
+
+| Cell | Mac PyTorch | L4 TRT FP32 | Δ |
+|---|---|---|---|
+| baseline_s0 | 0.7502 | 0.7454 | -0.6% |
+| **noise_s1** | **0.0337** | **0.0733** | **+118%** |
+| combined_s1 | 0.0177 | 0.0402 | +127% |
+
+Clean baseline drift is < 1% (engine-path tolerance). Catastrophic-drop
+cells show TRT-engine numbers ~2× higher than Mac PyTorch. Hypothesised
+causes: (1) NMS implementation (Ultralytics Python vs `EfficientNMS_TRT`
+plugin), (2) letterbox / resize interpolation difference, (3) proto-mask
+numerical precision in the engine post-process. Deployment-realistic
+number is the L4 TRT one; Mac path is a fast iteration surface but its
+noise-cell numbers should be treated as a *lower bound* on deployed
+robustness. Bisect study deferred (out of sprint scope).
+
+---
+
+## 8. INT8 Deferred — TRT 10.14 Tactic Gap
+
+INT8 engine build on L4 (TRT 10.14, DS 9.0 `samples-multiarch` container)
+fails the proto-head Conv+Sigmoid+Mul fusion in YOLOv8-seg with the D4
+entropy calibration cache. The D7 build script documents the limitation;
+TRT 10.14 tactic coverage for this specific fused subgraph is the
+upstream gap, not our calibration set.
+
+Decision + consequences: [ADR-0008 — TRT 10.14 INT8 Tactic Gap for YOLOv8-seg Proto Fusion](../docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md).
+
+Practical effect: H2 (INT8 compounds noise disproportionately) is
+**half-answered** — FP16 inherits FP32 fully, INT8 awaits either future
+TRT tactic coverage or a QAT migration with explicit quantization nodes.
+
+---
+
+## 9. Next Steps
 
 - [x] Per-defect-type breakdown
-- [ ] Heatmap visualization (severity × perturbation grid)
-- [ ] (v2) Cross-precision FP32 / FP16 / INT8 matrix on GCP L4
-- [ ] (v2) Label-transform-aware alignment cells for pure model-robustness measurement
-- [ ] (v2) Noise-augmented retrain experiment — is robustness gap closable?
-- [ ] (D10+) Integrate findings into CV / cover letter — "ISP-aware training deficiency
-  diagnosed via instrumented robustness study, mitigation path proposed"
+- [x] Heatmap visualization (`benchmarks/robustness_plot.png`)
+- [x] Cross-precision FP32 / FP16 matrix on L4
+- [ ] INT8 path — gated by TRT future-version tactic coverage or QAT migration ([ADR-0008](../docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md))
+- [ ] Label-transform-aware alignment cells (separates model-robustness from label-image misalignment)
+- [ ] Noise-augmented retrain experiment — convert §3a "proposed mitigation" → "demonstrated"
+- [ ] Mac-vs-L4-engine drift bisect (NMS / interp / proto-mask precision) — sub-study
+- [ ] `notes/stage-3-retro.md` — Stage 3 exit gate

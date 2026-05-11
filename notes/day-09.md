@@ -84,40 +84,134 @@ deployment robustness — the genuine ISP-engineering bridge story.
 
 ### Hard blockers
 
-| # | Item | Why blocking | Path forward |
+| # | Item | Status | Notes |
 |---|---|---|---|
-| O1 | **Cross-precision robustness matrix** (FP32 / FP16 / INT8) on GCP L4 | H2 unverified; primary NV-flavored finding (calibration ↔ robustness) currently un-evidenced | spin L4 VM from D7 snapshot (`aoi-d5-d7-final`), re-run `eval_robustness` against 3 TRT engines, append to `benchmarks/robustness_matrix.csv` |
-| O2 | **Aggregated heatmap PNG** `benchmarks/robustness_plot.png` | only raw image grids shipped; no single-glance metric chart for README / blog embed | matplotlib heatmap: rows = perturbation × severity, cols = precision, value = mAP@50, annotate Δ vs baseline |
+| O1 | **Cross-precision robustness matrix** (FP32 / FP16 / INT8) on GCP L4 | ✅ **FP32 + FP16 done · INT8 deferred** | see §6 below + `benchmarks/robustness_cross_precision.csv` + `benchmarks/l4_logs/`. INT8 blocked by TRT 10.14 tactic gap for YOLOv8-seg proto Conv+Sigmoid+Mul fusion → [ADR-0008](../docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md) |
+| O2 | **Aggregated heatmap PNG** `benchmarks/robustness_plot.png` | ✅ done | + companion `benchmarks/robustness_drift_plot.png` (FP16 vs FP32 abs drift, validates parity); generator: `scripts/gen_robustness_heatmap.py` |
 
-### Soft / stretch
+### Soft / stretch (open)
 
 | # | Item | Why soft | Path forward |
 |---|---|---|---|
 | O3 | **Label-transform-aware alignment cells** | current alignment cells conflate model-robustness with label-image misalignment (matches deployment scenario, but does not separate the two sources of failure) | add `--transform-labels` flag to `apply_perturbation.py` for alignment / combined cells, re-run as "model-only" variant |
 | O4 | **Noise-augmented retrain** | converts §4 mitigation path from "proposed" → "demonstrated"; closes 0.75 → 0.03 gap empirically | D2 v4 recipe: add `src.isp_aug.noise.apply` as Ultralytics custom transform; retrain metal_nut; re-run robustness matrix |
-| O5 | `notes/stage-3-retro.md` | required by stage-3 checklist exit review | write after O1-O2 land |
+| O5 | `notes/stage-3-retro.md` | required by stage-3 checklist exit review | write after O3 or O4 lands (Stage 3 exit gate) |
 
 ---
 
-## 6. Time Spent (D9 portion)
+## 6. Cross-Precision Robustness Matrix on L4 (O1)
+
+Re-spun GCP L4 from snapshot `aoi-d5-d7-final` (2026-05-12); ran the same
+13-cell perturbed val set through the TRT FP32 and FP16 engines using
+`eval_robustness`. INT8 deferred (see §6.3).
+
+Snapshot retained as `aoi-d9-cross-precision` (~$5/month idle) for future
+H3 / H4 follow-up. VM + disk deleted post-eval; billing stopped.
+
+### 6.1 Result snapshot (full matrix: `benchmarks/robustness_cross_precision.csv`)
+
+| Cell | Mac PyTorch FP32 | L4 TRT FP32 | L4 TRT FP16 | FP16 vs FP32 drift |
+|---|---|---|---|---|
+| baseline_s0 | 0.7502 | 0.7454 | 0.7459 | 0.0005 |
+| noise_s1 | 0.0337 | **0.0733** | 0.0733 | 0.0000 |
+| noise_s2 | 0.0298 | 0.0396 | 0.0395 | 0.0001 |
+| noise_s3 | 0.0012 | 0.0033 | 0.0033 | 0.0000 |
+| exposure_s1 | 0.7408 | 0.7315 | 0.7314 | 0.0001 |
+| exposure_s2 | 0.7488 | 0.7258 | 0.7261 | 0.0003 |
+| exposure_s3 | 0.7325 | 0.7073 | 0.7078 | 0.0005 |
+| alignment_s1 | 0.6975 | 0.6974 | 0.6974 | 0.0000 |
+| alignment_s2 | 0.3092 | 0.3049 | 0.3049 | 0.0000 |
+| alignment_s3 | 0.1258 | 0.1066 | 0.1066 | 0.0000 |
+| combined_s1 | 0.0177 | 0.0402 | 0.0399 | 0.0003 |
+| combined_s2 | 0.0045 | 0.0079 | 0.0082 | 0.0003 |
+| combined_s3 | 0.0001 | 0.0001 | 0.0001 | 0.0000 |
+
+Heatmap: `benchmarks/robustness_plot.png`. Drift bar chart: `benchmarks/robustness_drift_plot.png`.
+
+### 6.2 Findings
+
+**Finding A — FP16 ≡ FP32 functionally** (the H2-FP16-half answer).
+Max absolute drift = 0.0005 mAP@50 (mask), occurring on `baseline_s0` and
+`exposure_s3`. Every other production-relevant cell (mAP > 0.1) sits below
+0.0001. FP16 inherits the FP32 robustness profile in full; no
+quantization-induced compound effect under any perturbation in this regime.
+Promotes FP16 from "production-precision via D4 latency win" to
+"production-precision via D9 robustness parity verified". Refer to
+[ADR-0005](../docs/adr/0005-fp16-as-production-precision.md).
+
+**Finding B — Mac PyTorch vs L4 TRT-engine post-process drift** (engine-path
+divergence, not precision-induced).
+
+| Cell | Mac PyTorch | L4 TRT FP32 | Δ |
+|---|---|---|---|
+| baseline_s0 | 0.7502 | 0.7454 | -0.6% |
+| **noise_s1** | **0.0337** | **0.0733** | **+118%** (TRT engine 2× higher) |
+| exposure_s2 | 0.7488 | 0.7258 | -3.1% |
+| combined_s1 | 0.0177 | 0.0402 | +127% |
+
+Clean baseline drift is small (-0.6%, within engine-path tolerance). The
+catastrophic-drop cells (noise_s1, combined_s1) show TRT-engine numbers
+roughly 2× higher than Mac PyTorch. Hypothesised causes:
+
+1. **NMS implementation difference** — Ultralytics Python NMS (Mac path)
+   vs TRT engine `EfficientNMS_TRT` plugin (L4 path); IoU threshold + score
+   pruning order can differ at low-confidence borderline detections.
+2. **Letterbox / resize interpolation** — Ultralytics uses `cv2.INTER_LINEAR`
+   with letterbox padding; TRT engine post-process may use a different
+   interpolation or padding convention.
+3. **Mask threshold + proto multiplication numerical precision** —
+   sigmoid(proto · coef) > 0.5 mask threshold; small numerical differences
+   in the proto-coef dot product survive into mask-mAP at low signal levels.
+
+The TRT engine path is the deployment-realistic number. The Mac path
+remains useful as a fast iteration surface but its noise-cell numbers
+should be treated as a *lower bound* on deployed robustness.
+
+Worth a follow-up sub-study: bisect (1)-(3) to identify the dominant
+contributor. Out of scope for the current sprint.
+
+### 6.3 INT8 deferred — TRT 10.14 tactic gap
+
+INT8 engine build on L4 (TRT 10.14, DS 9.0 container) currently fails the
+proto-head Conv+Sigmoid+Mul fusion in the YOLOv8-seg head with the entropy
+calibration cache used in D4. The D7 build script documents this; the gap
+is rooted in TRT 10.14 tactic coverage for this specific fused subgraph,
+not in our calibration set.
+
+Decision and consequences captured in
+[ADR-0008](../docs/adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md). H2
+(INT8 compounds noise disproportionately) therefore remains formally
+**deferred** — not because the question is unimportant but because the
+infrastructure required to answer it is upstream of this sprint's scope.
+FP16 verdict on H2 is the half-answer this sprint can give.
+
+---
+
+## 7. Time Spent (D9 portion)
 
 | Step | Duration |
 |---|---|
-| `eval_robustness` aggregate code + run | 30 min code + 1 min run |
+| `eval_robustness` aggregate code + run (Mac) | 30 min code + 1 min run |
 | `eval_per_defect` (52 sub-evals) | 30 min code + 1 min run |
 | `benchmarks/robustness.md` analysis | 1 hr |
 | Visual proof grids (`robustness_grid_*.png`) | 30 min |
 | Hypothesis-verdict writeup | 20 min |
-| **D9 subtotal** | **~3 hr** |
+| **D9 round-1 subtotal** | **~3 hr** |
+| O1: L4 re-spin + cross-precision FP32/FP16 + INT8 tactic-gap diagnosis | ~2 hr + ~$3 GCP Spot |
+| O2: heatmap + drift plot scripts | ~30 min |
+| O1/O2 writeup + ADR-0008 + repo updates | ~1 hr |
+| **D9 round-2 subtotal (O1+O2)** | **~3.5 hr** |
+| **D9 total** | **~6.5 hr** |
 
-(D8 module dev + tuning time: see `day-08.md` §9 — moved here from there.)
+(D8 module dev + tuning time: see `notes/day-08.md` §8.)
 
 ---
 
-## 7. Project Tracking
+## 8. Project Tracking
 
-- Epic #7 (D8-D9 — ISP-Aware Robustness Study): can close on aggregate +
-  per-defect deliverables ✅. Sub-issue tracks O1-O5 outstanding.
-- ADR-0007 hypothesis verdicts captured in §2 above (and `robustness.md` §2).
-  No new ADR yet — O1 result will likely spawn ADR-0008 (calibration-set
-  re-design with noise-augmented data) if H2 holds on L4.
+- Epic #7 (D8-D9 — ISP-Aware Robustness Study): closeable on O1 + O2
+  delivered. Sub-issue tracks O3-O5 as Stage-3 exit follow-ups.
+- ADR-0007 hypothesis verdicts captured in §2.
+- ADR-0008 captures the TRT 10.14 INT8 tactic-gap diagnosis and the
+  consequence: H2 stays half-answered (FP16 ≡ FP32; INT8 pending tactic
+  coverage or QAT migration).

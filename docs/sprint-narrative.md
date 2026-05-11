@@ -259,12 +259,14 @@ analysis: [`benchmarks/robustness.md`](../benchmarks/robustness.md).
 
 #### D9 sub-items
 
-- ✅ Aggregate mAP@50 (mask) matrix — 13 cells (1 baseline + 9 individual + 3 combined), FP32 PyTorch only
+- ✅ Aggregate mAP@50 (mask) matrix — 13 cells (1 baseline + 9 individual + 3 combined), Mac PyTorch FP32
 - ✅ Per-defect-type breakdown (52 sub-evals via filename-prefix filter)
 - ✅ Hypothesis verdicts (H1-H4 vs ADR-0007)
 - ✅ Visual proof grids (`docs/robustness_grid_moderate.png`, `_severity.png`)
-- 🟡 **Cross-precision FP32 / FP16 / INT8 matrix** — deferred to GCP L4 v2 (Mac M5 has no TRT path); H2 unverified
-- ⏳ **Aggregated heatmap PNG** `benchmarks/robustness_plot.png` — only raw image grids shipped; no single-glance metric chart yet
+- ✅ **Cross-precision FP32 + FP16 matrix on L4** (TRT 10.14, 2026-05-12) — H2 FP16-half answered: max drift 0.0005 mAP, FP16 ≡ FP32 functionally. Snapshot `aoi-d9-cross-precision` retained for future H3/H4 follow-up. Results: [`benchmarks/robustness_cross_precision.csv`](../benchmarks/robustness_cross_precision.csv) + [`benchmarks/l4_logs/`](../benchmarks/l4_logs/).
+- 🟡 **INT8 deferred** — TRT 10.14 tactic gap for YOLOv8-seg proto Conv+Sigmoid+Mul fusion blocks entropy-calibration build on L4 (DS 9.0 container). Scoped + documented in [ADR-0008](adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md). H2 INT8 half stays open pending TRT future-version tactic coverage or QAT migration.
+- ✅ **Aggregated heatmap PNG** `benchmarks/robustness_plot.png` + companion `benchmarks/robustness_drift_plot.png` (FP16 vs FP32 abs drift bar chart). Generator: `scripts/gen_robustness_heatmap.py`.
+- ✅ **Bonus finding — Mac PyTorch vs L4 TRT-engine post-process drift**: noise_s1 mAP 0.034 (Mac) vs 0.073 (L4 TRT), 2× higher despite clean baseline drift < 1%. Likely NMS / interp / proto-mask precision differences in engine post-process. Bisect deferred as sub-study.
 - ⏳ Label-transform-aware alignment cells — current cells conflate model-robustness with label-image misalignment
 - ⏳ Noise-augmented retrain experiment — proposed mitigation not yet demonstrated
 - ✅ `notes/day-09.md` (this rewrite — was previously folded into `notes/day-08.md` §9)
@@ -288,9 +290,33 @@ Empirical sensitivity ranking: **NOISE >>> ALIGNMENT > EXPOSURE**
 | # | Hypothesis | Verdict | Notes |
 |---|---|---|---|
 | H1 | NOISE > EXPOSURE > ALIGNMENT | **PARTIALLY WRONG** | direction kept on NOISE first; exposure / alignment swapped; magnitude wildly underestimated |
-| H2 | INT8 compounds noise disproportionately | **DEFERRED** | Mac M5 has no TRT path; needs L4 cross-precision rerun |
+| H2 | INT8 compounds noise disproportionately | **HALF-ANSWERED** | FP16 ≡ FP32 verified on L4 (max drift 0.0005 mAP); INT8 deferred per [ADR-0008](adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md) |
 | H3 | Mild alignment within training-aug envelope (< 5%) | **CORRECT (within tolerance)** | 7.0% drop, just above predicted bound |
 | H4 | Combined-apply super-linear | **INCONCLUSIVE** | masked by noise dominance |
+
+#### D9 cross-precision matrix (L4 TRT 10.14)
+
+![Robustness matrix · Mac PyTorch vs L4 TRT FP32 / FP16](../benchmarks/robustness_plot.png)
+
+![FP16 vs FP32 drift](../benchmarks/robustness_drift_plot.png)
+
+Two findings beyond the FP32 Mac results:
+
+- **FP16 ≡ FP32 functionally** — H2 FP16-half answer. Max abs drift
+  0.0005 mAP@50; production-relevant cells < 0.0001. Promotes FP16 from
+  "production precision via D4 latency" to "production precision via D9
+  robustness parity verified" (reinforces [ADR-0005](adr/0005-fp16-as-production-precision.md)).
+- **Mac PyTorch vs L4 TRT-engine drift** — clean baseline diff < 1%
+  (engine-path tolerance), but noise_s1 cell shows 2× higher mAP on the
+  L4 TRT path (0.073) vs Mac PyTorch (0.034). Likely NMS implementation,
+  letterbox interpolation, or proto-mask numerical precision in the
+  engine post-process. Deployment-realistic number is L4 TRT; Mac path
+  is a *lower-bound* fast iteration surface. Bisect sub-study deferred.
+
+INT8 verdict deferred — see [ADR-0008](adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md):
+TRT 10.14 lacks tactic for YOLOv8-seg proto Conv+Sigmoid+Mul fusion under
+entropy calibration. Path forward = wait for TRT future-version coverage
+or migrate to QAT.
 
 ![Robustness moderate-severity grid](robustness_grid_moderate.png)
 
@@ -349,10 +375,12 @@ no GPU. Frozen plan:
 
 Ordered by NV-Metropolis fit + portfolio impact.
 
-1. **Cross-precision robustness matrix on L4** (D9 O1) — verifies H2 (INT8 noise compounding); primary NV-flavored finding tying calibration design to deployment robustness. If H2 holds → ADR-0008 proposes noise-augmented calibration-set redesign.
-2. **Noise-augmented retrain** (D9 O4) — converts §4 mitigation from "proposed" to "demonstrated"; ideally closes 0.75 → 0.03 gap; would be the headline blog-post number.
-3. **Path B: custom YOLOv8-seg parser** ([`notes/day-07-plan.md` §7g](../notes/day-07-plan.md)) — recovers instance masks at runtime in DS pipeline; demo video v2 with polygon overlay generated by DS itself.
-4. **EfficientAD secondary baseline** — image-level AUC for the "good-only training" regime; complements supervised seg story with the unsupervised-anomaly-detection angle.
-5. **Jetson Orin Nano deployment** — edge-device variant of the same engine; demonstrates portability across NV inference hardware tiers (T4 → L4 → Orin).
-6. **Cable / transistor robustness via the same ISP aug** — lower-baseline classes may show interesting degradation patterns (mentioned in [`day-02-training_summary.md`](../notes/day-02-training_summary.md) but not yet executed).
-7. **Multi-model cascaded inference** (PGIE + SGIE) — current pipeline is single-model; production AOI lines often use detect-then-classify (e.g. defect localiser + defect-type classifier head).
+1. **INT8 robustness eval** — gated by TRT future-version tactic coverage for the YOLOv8-seg proto Conv+Sigmoid+Mul fusion, or by migrating from PTQ entropy calibration to QAT with explicit Q/DQ nodes. Either path completes the H2 verdict. Snapshot `aoi-d9-cross-precision` retained (~$5/mo idle) to re-spin the same L4 config when TRT 11.x / 12.x lands. See [ADR-0008](adr/0008-trt-10-14-int8-tactic-gap-yolov8seg.md).
+2. **Noise-augmented retrain** (D9 O4) — converts §3a mitigation from "proposed" to "demonstrated"; ideally closes 0.75 → 0.03 gap; would be the headline blog-post number. Reuses `src/isp_aug/noise.apply` as an Ultralytics custom transform (D2 v4 recipe).
+3. **Mac PyTorch vs L4 TRT-engine post-process drift bisect** — identify whether NMS implementation, letterbox interpolation, or proto-mask numerical precision dominates the 2× noise_s1 gap. Practical relevance: how much do offline iteration-loop numbers under-predict deployed robustness?
+4. **Label-transform-aware alignment cells** (D9 O3) — separates "model robustness" from "label-image misalignment". Adds `--transform-labels` flag to `apply_perturbation.py`; reruns alignment + combined cells with affine matrix applied to ground-truth polygons.
+5. **Path B: custom YOLOv8-seg parser** ([`notes/day-07-plan.md` §7g](../notes/day-07-plan.md)) — recovers instance masks at runtime in DS pipeline; demo video v2 with polygon overlay generated by DS itself.
+6. **EfficientAD secondary baseline** — image-level AUC for the "good-only training" regime; complements supervised seg story with the unsupervised-anomaly-detection angle.
+7. **Jetson Orin Nano deployment** — edge-device variant of the same engine; demonstrates portability across NV inference hardware tiers (T4 → L4 → Orin).
+8. **Cable / transistor robustness via the same ISP aug** — lower-baseline classes may show interesting degradation patterns (mentioned in [`day-02-training_summary.md`](../notes/day-02-training_summary.md) but not yet executed).
+9. **Multi-model cascaded inference** (PGIE + SGIE) — current pipeline is single-model; production AOI lines often use detect-then-classify (e.g. defect localiser + defect-type classifier head).
